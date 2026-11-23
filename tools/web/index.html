@@ -1,0 +1,1141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#17191c">
+<title>S5 Gauge Pod</title>
+<style>
+:root {
+  --bg: #17191c;          /* cockpit */
+  --dial: #2d3035;        /* gauge face charcoal */
+  --dial-2: #23262a;
+  --chrome: #c9ccd1;      /* bezel */
+  --ink: #f4f4f1;         /* needle white */
+  --muted: #8f949b;
+  --line: #3a3e44;
+  --red: #f2163e;         /* red zone / peak */
+  --amber: #ffb020;
+  --ok: #3ccf7a;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 16px; -webkit-text-size-adjust: 100%; }
+body { margin: 0; min-height: 100vh; padding: 0 0 calc(72px + env(safe-area-inset-bottom)); }
+main { max-width: 560px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 1.05rem; font-weight: 600; margin: 4px 0 14px; display: flex; align-items: center; gap: 10px; }
+h1 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+h1 .dot.on { background: var(--ok); }
+h2 { font-size: 1rem; font-weight: 600; margin: 22px 0 10px; }
+p.note { color: var(--muted); font-size: .9rem; line-height: 1.45; margin: 6px 0 12px; }
+button, .btn { font: inherit; color: var(--ink); background: var(--dial); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; cursor: pointer; text-decoration: none; display: inline-block; }
+button:active { background: var(--dial-2); }
+button.warn { border-color: rgba(242, 22, 62, .55); }
+button.primary { background: var(--chrome); color: #17191c; border-color: var(--chrome); font-weight: 600; }
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid var(--chrome); outline-offset: 2px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.fwbar { height: 8px; border-radius: 4px; background: var(--dial-2); margin-top: 12px; overflow: hidden; }
+.fwbar div { height: 100%; width: 0; background: var(--chrome); transition: width .2s; }
+
+/* the machined dial surface, as on the gauge face */
+.dial { background:
+    repeating-radial-gradient(circle at 50% 120%, rgba(255,255,255,.018) 0 1.5px, rgba(0,0,0,.035) 1.5px 3px),
+    radial-gradient(120% 100% at 50% 0%, #3a3e44 0%, var(--dial) 45%, var(--dial-2) 100%);
+  border: 1px solid var(--line); border-radius: 18px; }
+
+/* live hero: arc + slanted number */
+.hero { padding: 18px 16px 14px; position: relative; overflow: hidden; }
+.hero svg { display: block; width: 100%; height: auto; }
+.big { font-size: 4.6rem; line-height: 1; font-style: oblique 11deg; font-variant-numeric: tabular-nums; font-weight: 300; letter-spacing: -.02em; text-align: center; margin-top: -54px; }
+.big.red { color: var(--red); }
+.unit { text-align: center; color: var(--muted); margin-top: 6px; }
+.peak { text-align: center; color: var(--red); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.status { text-align: center; color: var(--amber); font-size: .9rem; margin-top: 6px; min-height: 1.2em; }
+.status.cold { color: #60aaff; }
+
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; margin-top: 14px; }
+.cell { background: var(--dial-2); padding: 12px 10px; min-width: 0; }
+.cell .k { color: var(--muted); font-size: .8rem; }
+.cell .v { font-size: 1.45rem; font-style: oblique 11deg; font-variant-numeric: tabular-nums; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cell .v small { font-size: .8rem; color: var(--muted); font-style: normal; margin-left: 2px; }
+.cell .v .sub { display: block; font-size: .72rem; color: var(--muted); font-style: normal; margin-top: 2px; }
+.cell .v.amber { color: var(--amber); } .cell .v.red { color: var(--red); } .cell .v.dim { color: var(--muted); }
+
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 14px 2px 0; font-size: .92rem; }
+.facts dt { color: var(--muted); } .facts dd { margin: 0; overflow-wrap: anywhere; }
+
+/* forms */
+.field { display: grid; grid-template-columns: minmax(0, 1fr) 8.5rem; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.field label { font-size: .95rem; }
+.field label span { display: block; color: var(--muted); font-size: .8rem; margin-top: 2px; }
+.field input[type=number], .field input[type=text], .field input[type=password] { width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-variant-numeric: tabular-nums; }
+.field input[type=checkbox] { justify-self: end; width: 22px; height: 22px; accent-color: var(--chrome); }
+.calib { padding: 14px; margin-top: 4px; }
+.calib .facts { margin-top: 0; }
+.suggest { margin-top: 10px; font-size: .95rem; }
+.suggest b { font-variant-numeric: tabular-nums; }
+
+/* logs */
+.logs { width: 100%; border-collapse: collapse; font-size: .95rem; }
+.logs td { padding: 10px 4px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.logs td.n { font-variant-numeric: tabular-nums; }
+.logs td.s { color: var(--muted); text-align: right; white-space: nowrap; }
+.logs td.a { text-align: right; white-space: nowrap; }
+.logs td.a button, .logs td.a .btn { padding: 6px 10px; font-size: .85rem; }
+.logs .at { margin-left: 8px; font-size: .75rem; color: var(--muted); }
+.logs .when { font-size: .75rem; color: var(--muted); white-space: nowrap; }
+.logs .rec { color: var(--red); font-size: .85rem; }
+.chart { padding: 12px; margin-top: 14px; }
+.chart canvas { width: 100%; height: 220px; display: block; }
+.chart .facts { margin-top: 10px; }
+
+/* console */
+.console { display: flex; gap: 8px; }
+.console input { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; text-transform: uppercase; }
+pre.log { font-size: .75rem; max-height: 22em; overflow-y: auto; }
+pre.reply { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; min-height: 3em; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .9rem; margin: 8px 0 0; }
+
+/* bottom tabs */
+nav { position: fixed; left: 0; right: 0; bottom: 0; display: flex; background: rgba(23,25,28,.96); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); backdrop-filter: blur(8px); }
+nav button { flex: 1; border: 0; border-radius: 0; background: transparent; color: var(--muted); padding: 14px 4px 16px; font-size: .95rem; }
+nav button[aria-selected=true] { color: var(--ink); box-shadow: inset 0 2px 0 var(--chrome); }
+section[hidden] { display: none; }
+.toast { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--chrome); color: #17191c; padding: 9px 14px; border-radius: 10px; font-size: .92rem; opacity: 0; transition: opacity .2s; pointer-events: none; }
+.toast.show { opacity: 1; }
+.alert { margin: 0 0 12px; padding: 11px 14px; border-radius: 12px; background: var(--amber); color: #17191c; font-weight: 600; text-align: center; }
+.alert.red { background: var(--red); color: #fff; }
+.alert[hidden] { display: none; }
+.pull { padding: 14px; margin-top: 14px; }
+.pull .head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.pull .pk { font-size: 2.6rem; font-style: oblique 11deg; font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1; }
+.pull .pk small { font-size: .9rem; color: var(--muted); font-style: normal; margin-left: 4px; }
+.pull .when { color: var(--muted); font-size: .85rem; text-align: right; }
+.pull .verdict { margin-top: 10px; font-size: .95rem; }
+.verdict.ok { color: var(--ok); } .verdict.amber { color: var(--amber); } .verdict.red { color: var(--red); } .verdict.dim { color: var(--muted); }
+.pull .grid { margin-top: 12px; }
+.pull .cell .v { font-size: 1.15rem; }
+.usual { display: grid; grid-template-columns: repeat(var(--nb, 11), minmax(0, 1fr)); align-items: end; gap: 3px; height: 74px; margin-top: 12px; }
+.usual div { background: var(--chrome); border-radius: 3px 3px 0 0; min-height: 2px; opacity: .85; }
+.usual div.none { background: var(--line); }
+/* runs */
+.bests { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.bests .cell .v { font-size: 1.9rem; white-space: normal; }
+.bests .cell .v .sub { line-height: 1.3; }
+.runs td.t { width: 6.2rem; }
+.runs td.t { font-size: 1.25rem; font-style: oblique 11deg; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.runs td .kind { display: block; font-size: .78rem; color: var(--muted); font-style: normal; }
+.runs td.d { color: var(--muted); font-size: .85rem; line-height: 1.35; }
+.runs td.d b { color: var(--ink); font-weight: 500; }
+.runs td.d .when { display: block; color: var(--ink); opacity: .75; margin-bottom: 2px; }
+.runs .best { color: var(--ok); font-size: .78rem; }
+/* identifier finder */
+.finder { padding: 14px; }
+.finder .field { grid-template-columns: minmax(0, 1fr) 9rem; }
+.finder select, .finder input[type=text] { width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.finder input.hexin { text-transform: uppercase; font-variant-numeric: tabular-nums; }
+.steps { margin: 4px 0 12px 1.2em; padding: 0; color: var(--muted); font-size: .9rem; line-height: 1.5; }
+.cwrap { overflow-x: auto; margin-top: 10px; }
+.cands { width: 100%; border-collapse: collapse; font-size: .8rem; font-variant-numeric: tabular-nums; }
+.cands th, .cands td { white-space: nowrap; }
+.cands th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.cands td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.cands td.warn { color: var(--amber); }
+.cands.poll { width: 100%; } .cands.poll td:first-child { white-space: normal; } .cands.poll td { vertical-align: top; }
+.cands tr.strong td:first-child { color: var(--ok); }
+.cands .chg { color: var(--amber); }
+.cands button.mini { padding: 4px 10px; font-size: .8rem; }
+
+/* health trends */
+.hsum { list-style: none; padding: 0; margin: 0 0 6px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.hsum li { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 10px 12px; background: var(--dial-2); border-top: 1px solid var(--line); }
+.hsum li:first-child { border-top: 0; }
+.hsum .m { font-size: .95rem; }
+.hsum .d { color: var(--muted); font-size: .8rem; grid-column: 1 / -1; font-variant-numeric: tabular-nums; }
+.verdict { font-size: .8rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; align-self: start; white-space: nowrap; }
+.verdict.ok { color: var(--ok); } .verdict.watch { color: var(--amber); } .verdict.bad { color: var(--red); } .verdict.na { color: var(--muted); }
+.hchart { padding: 12px 12px 8px; margin-top: 12px; }
+.hchart h3 { font-size: .95rem; font-weight: 600; margin: 0; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.hchart h3 span { color: var(--muted); font-weight: 400; font-size: .8rem; }
+.hchart svg { display: block; width: 100%; height: auto; margin-top: 6px; touch-action: pan-y; }
+.hchart .ro { color: var(--muted); font-size: .8rem; min-height: 1.2em; font-variant-numeric: tabular-nums; }
+.hchart .ro b { color: var(--ink); font-weight: 600; }
+.usualk { display: grid; grid-template-columns: repeat(var(--nb, 11), minmax(0, 1fr)); gap: 3px; font-size: .68rem; color: var(--muted); text-align: center; margin-top: 4px; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <h1><span class="dot" id="link"></span><span id="title">S5 Gauge Pod</span></h1>
+
+  <!-- ============================== Live -->
+  <section id="tab-live">
+    <div class="alert" id="alert" role="alert" hidden></div>
+    <div class="dial hero">
+      <svg viewBox="0 0 300 168" aria-hidden="true">
+        <path id="arcbg" fill="none" stroke="#17191c" stroke-width="12" stroke-linecap="butt"/>
+        <path id="arcred" fill="none" stroke="#f2163e" stroke-width="4"/>
+        <path id="arcfill" fill="none" stroke="#f4f4f1" stroke-width="12"/>
+        <line id="peaktick" stroke="#f2163e" stroke-width="3"/>
+        <line id="zerotick" stroke="#8f949b" stroke-width="2"/>
+      </svg>
+      <div class="big" id="boost">--</div>
+      <div class="unit" id="unit">psi</div>
+      <div class="peak" id="peak">Peak --</div>
+      <div class="status" id="status"></div>
+    </div>
+    <div class="grid" id="tiles"></div>
+    <h2>Fuel and heat</h2>
+    <div class="grid" id="tiles2" style="margin-top:0"></div>
+    <h2>Last pull</h2>
+    <div id="pullbox"><p class="note">No pull yet. A pull is counted from about 80 % pedal with the sender above 2 psi, until you lift.</p></div>
+    <div class="row" style="margin-top:14px">
+      <button id="b-peak">Reset peak</button>
+      <button id="b-prev" aria-label="Previous page on the pod">‹ Page</button>
+      <button id="b-next" aria-label="Next page on the pod">Page ›</button>
+      <button id="b-zero" class="warn">Re-zero</button>
+    </div>
+    <dl class="facts" id="facts"></dl>
+  </section>
+
+  <!-- ============================== Logs -->
+  <section id="tab-logs" hidden>
+    <p class="note" id="logsum">Reading the log list…</p>
+    <div class="row"><button id="b-logtoggle">Stop logging</button><button id="b-logref">Refresh</button><button id="b-fmt" class="warn" style="display:none">Format internal storage</button></div>
+    <table class="logs"><tbody id="loglist"></tbody></table>
+    <div class="dial chart" id="chart" hidden>
+      <canvas id="cv" width="600" height="440"></canvas>
+      <dl class="facts" id="chartfacts"></dl>
+    </div>
+  </section>
+
+  <!-- ============================== Runs -->
+  <section id="tab-runs" hidden>
+    <p class="note">From a stop: hold still for a second until the Perf page says READY, then go. 0–60 and the quarter mile are timed from the moment the car starts to move. 60–130 is timed whenever you pass 60 mph accelerating hard. Lifting off, or no acceleration for a second, drops the run.</p>
+    <h2 id="besth">Best</h2>
+    <div class="bests" id="bests"></div>
+    <p class="note" id="bestnote"></p>
+    <h2>Last 30 runs</h2>
+    <table class="logs runs"><tbody id="runlist"></tbody></table>
+    <div class="row" style="margin-top:14px"><button id="b-runsclear" class="warn">Clear runs</button></div>
+  </section>
+
+  <!-- ============================== Health -->
+  <section id="tab-health" hidden>
+    <p class="note">Every hard pull is saved here, so slow changes show up long before a fault code: a slipping belt, a tired fuel pump, a clogged filter, more knock. Each measure is compared with a baseline, your first 10 pulls (or the 10 after you set a new one), against your last 10.</p>
+    <p class="note" id="h-head">Reading the pull history…</p>
+    <ul class="hsum" id="h-sum"></ul>
+    <p class="note" id="h-ctx"></p>
+    <div id="h-charts"></div>
+    <h2>Catalysts</h2>
+    <p class="note" id="c-head">The ECU's own catalyst test, saved each time it produces a new result (about once a drive, during a steady cruise). Lower is better; it fails at 100 % of its limit.</p>
+    <ul class="hsum" id="c-sum"></ul>
+    <div id="c-charts"></div>
+    <div class="row" style="margin-top:14px">
+      <button id="b-hbase">Set a new baseline</button><button id="b-hcsv">Download CSV</button><button id="b-hclear" class="warn">Clear history</button>
+    </div>
+    <p class="note">Set a new baseline after changing something on purpose (a pulley, a tune, plugs), so the trends compare against the car as it is now.</p>
+  </section>
+
+  <!-- ============================== Settings -->
+  <section id="tab-set" hidden>
+    <h2>Boost calibration</h2>
+    <p class="note">Warm engine, steady idle, OBD connected. The pod compares the sender voltage with the car's own manifold pressure and works out the sender's volts per psi.</p>
+    <div class="dial calib">
+      <dl class="facts" id="calfacts"></dl>
+      <div class="suggest" id="suggest">Waiting for OBD manifold pressure…</div>
+      <div class="row" style="margin-top:10px"><button id="b-usecal" disabled>Use this value</button></div>
+    </div>
+    <h2>G-meter</h2>
+    <p class="note">The pod learns which way is level at every stop and which way is forward from the first few straight pulls, so this normally needs nothing. Re-level after moving the pod in the vent (or hold a finger on the G-force page for 3 s).</p>
+    <div class="dial calib">
+      <dl class="facts" id="gfacts"></dl>
+      <div class="row" style="margin-top:10px"><button id="b-glevel">Re-level now</button><button id="b-gpeak">Reset G peaks</button><button id="b-gforget">Forget calibration</button></div>
+    </div>
+    <form id="setform" autocomplete="off">
+      <div class="field"><label for="vPerPsi">Sender volts per psi<span>Calibration. 0.0862 until measured.</span></label><input id="vPerPsi" name="vPerPsi" type="number" step="0.0001" min="0.02" max="0.3"></div>
+      <div class="field"><label for="obdTrim">Match the ECU at idle<span id="trimnote">Learns the sender's small running offset against the car's own manifold sensor</span></label><input id="obdTrim" name="obdTrim" type="checkbox"></div>
+      <div class="field"><label for="oilTrimF">Oil temp offset<span>°F added to the ECU's reading, to match the dash if you want</span></label><input id="oilTrimF" name="oilTrimF" type="number" step="1" min="-30" max="30"></div>
+      <h2>Gauge</h2>
+      <div class="field"><label for="redPsi">Red zone from<span>psi</span></label><input id="redPsi" name="redPsi" type="number" step="1" min="5" max="30"></div>
+      <div class="field"><label for="shiftRpm">Shift light at<span>rpm, the ring flashes here</span></label><input id="shiftRpm" name="shiftRpm" type="number" step="100" min="3000" max="8000"></div>
+      <div class="field"><label for="redlineRpm">Redline<span>rpm, red zone on the tach</span></label><input id="redlineRpm" name="redlineRpm" type="number" step="100" min="3000" max="8000"></div>
+      <div class="field"><label for="telltale">Peak telltale needle</label><input id="telltale" name="telltale" type="checkbox"></div>
+      <div class="field"><label for="peakHoldS">Telltale falls back after<span>seconds after a pull, on the Boost, Overview and Engine dials. 0 keeps it until you reset the peak (hold the pod 1 s).</span></label><input id="peakHoldS" name="peakHoldS" type="number" step="1" min="0" max="120"></div>
+      <div class="field"><label for="digital">Digital readout</label><input id="digital" name="digital" type="checkbox"></div>
+      <div class="field"><label for="nightTheme">Black face with headlights on</label><input id="nightTheme" name="nightTheme" type="checkbox"></div>
+      <h2>Warnings</h2>
+      <div class="field"><label for="autoAlert">Jump to a warning<span>Any page switches to the page with the reading in trouble, with a banner. Tap the pod to dismiss.</span></label><input id="autoAlert" name="autoAlert" type="checkbox"></div>
+      <div class="field"><label for="autoLaunch">Go to the Perf page for a launch<span>When the car is held at a standstill with the revs up (launch control or brake boosting), then back to your page after the run</span></label><input id="autoLaunch" name="autoLaunch" type="checkbox"></div>
+      <div class="field"><label for="autoPull">Show the pull summary<span>For 8 seconds after each full-throttle pull, then back to your page</span></label><input id="autoPull" name="autoPull" type="checkbox"></div>
+      <h2>Performance timers</h2>
+      <div class="field"><label for="perfRollout">Time like a drag strip<span>Start the clock after the first foot of travel (1 ft rollout), as drag strips and magazines do. About 0.2–0.3 s quicker.</span></label><input id="perfRollout" name="perfRollout" type="checkbox"></div>
+      <div class="field"><label for="obdLagMs">OBD speed delay<span>ms. How late the car's speed reading arrives, so it lines up with the G-meter. 120 until measured from a log.</span></label><input id="obdLagMs" name="obdLagMs" type="number" step="10" min="0" max="500"></div>
+      <h2>Brightness</h2>
+      <div class="field"><label for="brightDay">Daytime<span>headlights off, 0–255</span></label><input id="brightDay" name="brightDay" type="number" min="10" max="255"></div>
+      <div class="field"><label for="brightDimMin">Dimmer fully down</label><input id="brightDimMin" name="brightDimMin" type="number" min="5" max="255"></div>
+      <div class="field"><label for="brightDimMax">Dimmer fully up</label><input id="brightDimMax" name="brightDimMax" type="number" min="5" max="255"></div>
+      <h2>Logging</h2>
+      <div class="field"><label for="logOn">Log drives</label><input id="logOn" name="logOn" type="checkbox"></div>
+      <div class="field"><label for="logEngineOnly">Only while the engine runs</label><input id="logEngineOnly" name="logEngineOnly" type="checkbox"></div>
+      <div class="field"><label for="logHz">Samples per second<span>1–25. 10 fills about 4 MB an hour.</span></label><input id="logHz" name="logHz" type="number" min="1" max="25"></div>
+      <h2>OBD adapter</h2>
+      <div class="field"><label for="obdOn">Use the OBD adapter</label><input id="obdOn" name="obdOn" type="checkbox"></div>
+      <div class="field"><label for="obdName">Adapter names to look for<span>Comma separated</span></label><input id="obdName" name="obdName" type="text" maxlength="46"></div>
+      <h2>Wi-Fi</h2>
+      <div class="field"><label for="wifiOn">Pod Wi-Fi<span>Turning it off needs a reflash or the serial command w to undo</span></label><input id="wifiOn" name="wifiOn" type="checkbox"></div>
+      <div class="field"><label for="apSsid">Network name</label><input id="apSsid" name="apSsid" type="text" maxlength="22"></div>
+      <div class="field"><label for="apPass">Password<span>At least 8 characters</span></label><input id="apPass" name="apPass" type="password" minlength="8" maxlength="22"></div>
+      <div class="row" style="margin-top:16px">
+        <button type="submit" class="primary">Save settings</button>
+        <button type="button" id="b-defaults" class="warn">Reset to defaults</button>
+        <button type="button" id="b-restart">Restart pod</button>
+      </div>
+      <p class="note" id="setnote">Wi-Fi changes take effect after a restart. Everything else applies straight away.</p>
+    </form>
+    <h2>Firmware</h2>
+    <p class="note">Install a new build without the USB cable. In the Arduino IDE use Sketch → Export Compiled Binary, then pick <b>S5GaugePod_Test.ino.bin</b> from the sketch's build folder. The pod keeps running while it uploads, then restarts into the new build. If that build doesn't start properly, the pod goes back to this one by itself.</p>
+    <div class="dial calib">
+      <dl class="facts" id="fwfacts"></dl>
+      <div class="row" style="margin-top:10px;align-items:center">
+        <label class="btn" for="fwfile">Choose .bin</label><input id="fwfile" type="file" accept=".bin" hidden>
+        <button id="b-fw" class="primary" disabled>Install</button>
+      </div>
+      <div class="fwbar" id="fwbarwrap" hidden><div id="fwbar"></div></div>
+      <p class="note" id="fwnote"></p>
+    </div>
+  </section>
+
+  <!-- ============================== OBD -->
+  <section id="tab-obd" hidden>
+    <dl class="facts" id="obdfacts"></dl>
+    <div class="row" style="margin-top:14px"><button id="b-forget">Forget this adapter</button></div>
+    <h2>How often each reading arrives</h2>
+    <p class="note">The adapter answers one request at a time, so the readings take turns: RPM and speed every round, then whichever other reading is most overdue. <b>Asks</b> is how often it's wanted (and on boost, under it), <b>Gets</b> how often an answer actually came while you drive, <b>On boost</b> the same during pulls. Readings marked <i>waits in pulls</i> pause on boost so the pull data comes faster; <i>stopped only</i> are read only below about 5 mph (they're for launch detection).</p>
+    <div id="pollwrap"></div>
+    <p class="note">Talks to the ELM327 directly, for example ATRV, 0100 or 221001 (these go to the engine). To ask another module, put its address first: 7E1:221035 22126A asks the gearbox, up to four at once. The pod pauses its own polling while it waits.</p>
+    <div class="console"><input id="cmd" maxlength="40" placeholder="ATRV" aria-label="ELM327 command"><button id="b-send">Send</button></div>
+    <pre class="reply" id="reply"></pre>
+    <h2>ECU self-tests</h2>
+    <p class="note">The engine computer tests the catalysts, O2 sensors, valve timing and evap system itself and keeps each result with its pass/fail limits. This reads them all (a second or two). A test only has a real result once the ECU has run it since the codes were last cleared, usually during a steady cruise.</p>
+    <div class="row"><button id="b-self">Read self-tests</button></div>
+    <p class="note" id="st-status"></p>
+    <div id="st-list"></div>
+    <h2>Modules on the car</h2>
+    <p class="note">Asks every diagnostic address which modules answer (about a minute; the gauges pause), then each one its name. Modules that use VW's older TP2.0 protocol won't show up: an ELM327 can't talk to them. Any module listed here can be asked from the console (<code>710:22F190</code>) or scanned below.</p>
+    <div class="row"><button id="b-mods">Find modules</button></div>
+    <div id="md-list"></div>
+    <h2>Find an identifier</h2>
+    <p class="note">For a reading nobody has published, such as the drive select mode. Parked, ignition on (engine running is fine). While it runs, the gauges stop updating.</p>
+    <ol class="steps">
+      <li>Set the car to one state (say Comfort), type that as the label and press <b>Scan the range</b>. This asks the ECU for every identifier in the range: about 5–7 minutes for 1000–2FFF.</li>
+      <li>Change the car (Dynamic), label it and press <b>Read again</b>. This only re-reads the ones that answered: under a minute.</li>
+      <li>Back to Comfort, <b>Read again</b>; then Dynamic again. Taking each state twice rules out values that change on their own.</li>
+      <li>The list ranks what changed with your switches and nothing else. Green: it held steady within each state and differs between them.</li>
+    </ol>
+    <div class="dial finder">
+      <div class="field"><label for="sc-hdr">Ask<span>Address: 7E0 engine, 7E1 gearbox, or a module found above</span></label>
+        <input id="sc-hdr" class="hexin" type="text" maxlength="3" value="7E0" list="sc-mods"><datalist id="sc-mods"><option value="7E0">Engine</option><option value="7E1">Gearbox</option></datalist></div>
+      <div class="field"><label for="sc-from">From<span>hex</span></label><input id="sc-from" class="hexin" type="text" maxlength="4" value="1000"></div>
+      <div class="field"><label for="sc-to">To<span>hex</span></label><input id="sc-to" class="hexin" type="text" maxlength="4" value="2FFF"></div>
+      <div class="field"><label for="sc-label">Label for this reading<span>What the car is set to right now</span></label><input id="sc-label" type="text" maxlength="15" placeholder="Comfort"></div>
+      <div class="row" style="margin-top:12px">
+        <button id="b-scan" class="primary">Scan the range</button><button id="b-snap">Read again</button>
+        <button id="b-scstop">Stop</button><button id="b-scclear" class="warn">Clear</button>
+        <a class="btn" href="/scan.csv" download="ident_scan.csv">Download CSV</a>
+      </div>
+      <div class="fwbar" id="sc-barwrap" hidden><div id="sc-bar"></div></div>
+      <p class="note" id="sc-status">Nothing scanned yet.</p>
+      <div id="sc-cands"></div>
+    </div>
+    <h2>Adapter log</h2>
+    <p class="note">The last 40 commands and replies. Every command is logged while it connects; once it's polling, only failures are.</p>
+    <pre class="reply log" id="obdlog"></pre>
+  </section>
+</main>
+
+<nav role="tablist">
+  <button role="tab" aria-selected="true" data-tab="live">Live</button>
+  <button role="tab" aria-selected="false" data-tab="runs">Runs</button>
+  <button role="tab" aria-selected="false" data-tab="health">Health</button>
+  <button role="tab" aria-selected="false" data-tab="logs">Logs</button>
+  <button role="tab" aria-selected="false" data-tab="set">Settings</button>
+  <button role="tab" aria-selected="false" data-tab="obd">OBD</button>
+</nav>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const INHG = 2.03602, MIN = -14.735, MAX = 30;
+  let tab = "live", live = null, settings = null, redPsi = 20;
+
+  const toast = (t) => { const e = $("toast"); e.textContent = t; e.classList.add("show"); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove("show"), 1800); };
+  const post = (url, data) => fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(data || {}) }).then(r => r.json());
+  const get = (url) => fetch(url, { cache: "no-store" }).then(r => r.json());
+
+  // ---------------------------------------------------------- tabs
+  document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+    tab = b.dataset.tab;
+    document.querySelectorAll("nav button").forEach(x => x.setAttribute("aria-selected", String(x === b)));
+    for (const t of ["live", "runs", "health", "logs", "set", "obd"]) $("tab-" + t).hidden = t !== tab;
+    if (tab === "health") loadHealth();
+    if (tab === "obd") loadSelf();
+    if (tab === "logs") loadLogs();
+    if (tab === "runs") loadRuns();
+    if (tab === "set") loadSettings();
+  });
+
+  // ---------------------------------------------------------- arc (top half, -14.7 .. 30 psi)
+  const CX = 150, CY = 150, R = 128;
+  const ang = (p) => Math.PI * (1 - (Math.max(MIN, Math.min(MAX, p)) - MIN) / (MAX - MIN));
+  const pt = (a, r) => [CX + r * Math.cos(a), CY - r * Math.sin(a)];
+  const arcPath = (p0, p1, r) => { const a0 = ang(p0), a1 = ang(p1); const [x0, y0] = pt(a0, r), [x1, y1] = pt(a1, r); return `M${x0.toFixed(1)} ${y0.toFixed(1)} A${r} ${r} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)}`; };
+  const tick = (el, p, r0, r1) => { const a = ang(p); const [x0, y0] = pt(a, r0), [x1, y1] = pt(a, r1); el.setAttribute("x1", x0); el.setAttribute("y1", y0); el.setAttribute("x2", x1); el.setAttribute("y2", y1); };
+  $("arcbg").setAttribute("d", arcPath(MIN, MAX, R));
+  tick($("zerotick"), 0, R - 10, R + 10);
+  function drawArc(psi, peak) {
+    $("arcred").setAttribute("d", arcPath(redPsi, MAX, R + 9));
+    const f = $("arcfill");
+    if (psi >= 0) { f.setAttribute("d", arcPath(0, Math.max(0.01, psi), R)); f.setAttribute("stroke", psi >= redPsi ? "#f2163e" : "#f4f4f1"); }
+    else { f.setAttribute("d", arcPath(psi, 0, R)); f.setAttribute("stroke", "#c9ccd1"); }
+    if (peak > 0.2) { tick($("peaktick"), peak, R - 9, R + 12); $("peaktick").style.display = ""; } else $("peaktick").style.display = "none";
+  }
+
+  // ---------------------------------------------------------- live
+  const TILES = [
+    ["rpm", "RPM", "", 0], ["thr", "Throttle", "%", 0], ["iat", "Intake", "°F", 0],
+    ["clt", "Coolant", "°F", 0], ["oil", "Oil", "°F", 0], ["bat", "Battery", "V", 1],
+    ["tim", "Timing", "°", 1], ["map", "Boost (OBD)", "psi", 1], ["kmh", "Speed", "mph", 0],
+  ];
+  $("tiles").innerHTML = TILES.map(t => `<div class="cell"><div class="k">${t[1]}</div><div class="v dim" id="t-${t[0]}">--</div></div>`).join("");
+  // the same limits the pod warns at (watch.h)
+  const warnOf = (k, v) => k === "iat" && v >= 150 ? "amber" : k === "clt" && v >= 230 ? "red" : k === "oil" && v >= 280 ? "red" : k === "oil" && v >= 260 ? "amber"
+    : k === "bat" && (v < 12 || v > 15.2) ? "amber" : (k === "cat1" || k === "cat2") && v >= 1850 ? "red" : (k === "cat1" || k === "cat2") && v >= 1800 ? "amber"
+    : k === "idc" && v >= 90 ? "amber" : k === "clu" && v >= 265 ? "red" : k === "clu" && v >= 240 ? "amber"
+    : k === "gbx" && v >= 255 ? "red" : k === "gbx" && v >= 230 ? "amber" : k === "dif" && v >= 275 ? "red" : k === "dif" && v >= 250 ? "amber" : "";
+  const TILES2 = [
+    ["afr1", "AFR bank 1", "", 1], ["afr2", "AFR bank 2", "", 1], ["idc", "Injectors", "%", 0],
+    ["hpfp", "Fuel pump", "psi", 0], ["lpfp", "Low side", "psi", 0], ["icp", "IC pump", "%", 0],
+    ["cat1", "Cat bank 1", "°F", 0], ["cat2", "Cat bank 2", "°F", 0], ["pre", "Before charger", "°F", 0],
+    ["clu", "Clutch oil", "°F", 0], ["gbx", "Gearbox", "°F", 0], ["dif", "Diff oil", "°F", 0],
+  ];
+  $("tiles2").innerHTML = TILES2.map(t => `<div class="cell"><div class="k">${t[1]}</div><div class="v dim" id="t-${t[0]}">--</div></div>`).join("");
+  function renderTiles2(d) {
+    const v = d.v;
+    for (const [k, , u, dec] of TILES2) {
+      const e = $("t-" + k), x = v[k];
+      if (x === null || x === undefined) { e.className = "v dim"; e.textContent = "--"; continue; }
+      let cls = warnOf(k, x), sub = "";
+      if (k === "afr1" || k === "afr2") {          // lean on boost is the warning, against what the ECU asks for
+        const over = v.afrc != null ? x - v.afrc : x - 12.5;     // lean against the command; 29.4 is a fuel cut
+        if (d.psi > 3 && x < 20 && over >= 1.0) cls = over >= 1.5 ? "red" : "amber";
+        if (v.afrc != null) sub = `target ${v.afrc.toFixed(1)}`;
+      }
+      if (k === "hpfp" && v.hpfps != null) { sub = `target ${v.hpfps.toFixed(0)}`; if (d.psi > 3 && v.hpfps >= 1200 && x < 0.85 * v.hpfps) cls = "amber"; }
+      if (k === "lpfp" && d.psi > 3 && x < 40) cls = "amber";
+      if (k === "pre" && v.amb != null) sub = `outside ${v.amb.toFixed(0)}°F`;
+      e.className = "v " + cls;
+      e.innerHTML = x.toFixed(dec) + (u ? `<small>${u}</small>` : "") + (sub ? `<span class="sub">${sub}</span>` : "");
+    }
+  }
+
+  // ---------------------------------------------------------- runs
+  let runsSeen = -1, clockSent = false, healthSeen = -1;
+  // The pod has no clock that survives the ignition going off, so the page gives it the
+  // phone's time whenever it opens (runs from this drive are dated back from it).
+  function sendClock() { clockSent = true; post("/api/time", { s: Math.floor(Date.now() / 1000) }).catch(() => { clockSent = false; }); }
+  sendClock();
+  const KIND = ["0–60", "60–130", "¼ mile"];
+  const fmtWhen = (r) => r.when ? new Date(r.when * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+    : r.thisBoot ? ago(r.ago) : (r.log ? `log_${String(r.log).padStart(4, "0")}, date unknown` : "date unknown");
+  function runDetail(r) {
+    const bits = [];
+    if (r.kind === 2) bits.push(`<b>${r.mph.toFixed(0)} mph</b> at the line`);
+    if (r.psi != null) bits.push(`peak ${r.psi.toFixed(1)} psi`);
+    if (r.amb != null) bits.push(`${r.amb.toFixed(0)}°F outside`);
+    const flags = [];
+    if (r.rollout) flags.push("rollout");
+    if (r.obd) flags.push("OBD speed only");
+    if (r.log && r.when) flags.push(`log_${String(r.log).padStart(4, "0")}`);
+    return bits.join(", ") + (flags.length ? `<br>${flags.join(", ")}` : "");
+  }
+  async function loadRuns() {
+    let d; try { d = await get("/api/runs"); } catch (e) { return; }
+    // bests for the current rollout setting
+    const best = [0, 1, 2].map(k => d.best.find(b => b.kind === k && (k === 1 || b.rollout === d.rollout)));
+    $("besth").textContent = d.rollout ? "Best (with rollout)" : "Best";
+    $("bests").innerHTML = best.map((b, k) => `<div class="cell"><div class="k">${KIND[k]}</div>` +
+      (b ? `<div class="v">${b.t.toFixed(2)}<small>s</small><span class="sub">${k === 2 ? b.mph.toFixed(0) + " mph<br>" : ""}${fmtWhen(b)}</span></div>`
+         : `<div class="v dim">--</div>`) + `</div>`).join("");
+    const other = d.best.filter(b => b.kind !== 1 && b.rollout !== d.rollout);
+    $("bestnote").textContent = other.length ? `${d.rollout ? "Without" : "With"} rollout: ` + other.map(b => `${KIND[b.kind]} ${b.t.toFixed(2)} s`).join(", ") + "." : "";
+    $("runlist").innerHTML = d.runs.length ? d.runs.map(r => {
+      const isBest = d.best.some(b => b.kind === r.kind && b.t === r.t && b.when === r.when && b.rollout === r.rollout);
+      return `<tr><td class="t">${r.t.toFixed(2)}<small> s</small><span class="kind">${KIND[r.kind]}${isBest ? ' <span class="best">best</span>' : ""}</span></td>
+        <td class="d"><span class="when">${fmtWhen(r)}</span>${runDetail(r)}</td></tr>`;
+    }).join("") : `<tr><td class="d">No runs yet.</td></tr>`;
+  }
+  $("b-runsclear").onclick = () => { if (confirm("Clear every saved run and best time?")) post("/api/cmd", { do: "runsclear" }).then(() => { toast("Runs cleared"); setTimeout(loadRuns, 400); }); };
+
+  // ---------------------------------------------------------- pulls
+  let pullsSeen = -1;
+  const f0 = (x, dec = 0) => x == null ? "--" : x.toFixed(dec);
+  const ago = (s) => s < 90 ? `${s} s ago` : s < 5400 ? `${Math.round(s / 60)} min ago` : `${(s / 3600).toFixed(1)} h ago`;
+  function verdictOf(p, learned) {
+    if (p.slip) return ["red", "Boost fell while the revs kept rising. Check the belt for slip."];
+    if (p.vsUsual == null) return ["dim", `Still learning this car's usual boost (${learned} full-pedal pull${learned === 1 ? "" : "s"} so far)`];
+    if (p.vsUsual <= -1.5) return ["amber", `${(-p.vsUsual).toFixed(1)} psi below the usual boost for these revs`];
+    return ["ok", `Boost as usual for the revs (${p.vsUsual >= 0 ? "+" : ""}${p.vsUsual.toFixed(1)} psi)`];
+  }
+  async function loadPulls() {
+    let r; try { r = await get("/api/pulls"); } catch (e) { return; }
+    const box = $("pullbox");
+    const usual = r.usual || [];
+    $("pullbox").style.setProperty("--nb", usual.length || 11);
+    const top = Math.max(1, ...usual.map(u => u.psi || 0));
+    const usualHtml = `<p class="note" style="margin:16px 0 0">This car's usual boost at full pedal, 2,500–7,500 rpm, learned from ${r.learned} pull${r.learned === 1 ? "" : "s"}. Underboost and belt slip are judged against it, not against the ECU's target.</p>
+      <div class="usual">${usual.map(u => `<div class="${u.psi == null ? "none" : ""}" style="height:${u.psi == null ? 2 : Math.max(2, 100 * u.psi / top)}%" title="${u.rpm} rpm: ${u.psi == null ? "not learned" : u.psi + " psi"}"></div>`).join("")}</div>
+      <div class="usualk">${usual.map(u => `<span>${u.psi == null ? "–" : u.psi.toFixed(0)}</span>`).join("")}</div>
+      <div class="usualk">${usual.map(u => `<span>${u.rpm % 1000 ? "" : u.rpm / 1000 + "k"}</span>`).join("")}</div>`;
+    if (!r.pulls || !r.pulls.length) { box.innerHTML = `<p class="note">No pull yet. A pull is counted from about 80 % pedal with the sender above 2 psi, until you lift.</p>` + (r.learned ? usualHtml : ""); return; }
+    const p = r.pulls[0], [vc, vt] = verdictOf(p, r.learned);
+    const kn = p.knock == null ? "--" : p.knock > -0.05 ? "none" : `${p.knock.toFixed(1)}<small>°</small><span class="sub">cylinder ${p.kcyl}</span>`;
+    const knc = p.knock != null && p.knock <= -3 ? "red" : p.knock != null && p.knock <= -1 ? "amber" : "";
+    const cells = [
+      ["Intake rise", p.iat0 != null && p.iatMax != null ? `${(p.iatMax - p.iat0).toFixed(0)}<small>°F</small><span class="sub">${p.iat0}→${p.iatMax}°F</span>` : "--", ""],
+      ["Lowest timing", p.minTim == null ? "--" : p.minTim.toFixed(1) + "<small>°</small>", ""],
+      ["Worst knock", kn, knc],
+      ["Fuel pump vs target", p.hpfpDef == null ? "--" : `${p.hpfpDef > 0 ? "+" : ""}${p.hpfpDef.toFixed(0)}<small>psi</small>` + (p.lpfpMin != null ? `<span class="sub">low side ${p.lpfpMin} min</span>` : ""), p.hpfpDef != null && p.hpfpDef <= -200 ? "amber" : ""],
+      ["Leanest AFR", f0(p.afrMax, 1) + (p.afrOver != null ? `<span class="sub">${p.afrOver >= 0 ? "+" : ""}${p.afrOver.toFixed(1)} vs target</span>` : ""), p.afrOver != null ? (p.afrOver >= 1.5 ? "red" : p.afrOver >= 1.0 ? "amber" : "") : (p.afrMax != null && p.afrMax >= 13.5 ? "red" : "")],
+      ["Injectors", p.idcMax == null ? "--" : p.idcMax + "<small>%</small>", p.idcMax >= 90 ? "amber" : ""],
+      ["Hottest cat", p.catMax == null ? "--" : p.catMax + "<small>°F</small>", p.catMax >= 1850 ? "red" : p.catMax >= 1800 ? "amber" : ""],
+      ["ECU boost / target", p.obd == null ? "--" : `${p.obd.toFixed(1)}` + (p.tgt != null ? `<span class="sub">target ${p.tgt.toFixed(1)}</span>` : ""), ""],
+      ["Bypass, most closed", p.bypassMin == null ? "--" : p.bypassMin.toFixed(1) + "<small>°</small>", ""],
+    ];
+    const older = r.pulls.slice(1).map(q => `<tr><td class="n">${f0(q.peak, 1)} psi</td><td>gears ${q.gears || "–"}, ${q.peakRpm} rpm</td><td class="s">${q.slip ? '<span class="rec">slip</span> ' : q.vsUsual != null && q.vsUsual <= -1.5 ? '<span class="rec">low</span> ' : ""}${ago(q.ago)}</td></tr>`).join("");
+    box.innerHTML = `<div class="dial pull">
+        <div class="head"><div class="pk">${f0(p.peak, 1)}<small>psi</small></div>
+          <div class="when">${ago(p.ago)}<br>gears ${p.gears || "–"}, ${p.dur.toFixed(1)} s<br>${Math.round(p.kmh0 * 0.621371)}→${Math.round(p.kmh1 * 0.621371)} mph, peak at ${p.peakRpm} rpm</div></div>
+        <div class="verdict ${vc}">${vt}</div>
+        <div class="grid">${cells.map(([k, v, c]) => `<div class="cell"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`).join("")}</div>
+        ${usualHtml}
+      </div>` + (older ? `<h2>Earlier pulls</h2><table class="logs"><tbody>${older}</tbody></table>` : "");
+  }
+
+  function renderLive(d) {
+    live = d;
+    $("link").classList.add("on");
+    const vac = d.text < 0, show = vac ? -d.text * INHG : d.text;
+    $("boost").textContent = show.toFixed(1);
+    $("boost").classList.toggle("red", d.text >= redPsi);
+    $("unit").textContent = vac ? "inHg vacuum" : "psi boost";
+    $("peak").textContent = "Peak " + Math.max(0, d.peak).toFixed(1) + " psi";
+    const st = d.demo ? "Demo mode: no ADS1115 and no OBD manifold pressure yet" : d.src === "obd" ? (d.fault ? "Sender not reading: boost from OBD" : "Boost from OBD (no ADS1115)") : d.fault ? "Check the sensor wiring: signal out of range" : "";
+    $("status").textContent = st || (d.cold != null ? `Not warm: oil ${d.cold}°F` : "");
+    $("status").classList.toggle("cold", !st && d.cold != null);
+    drawArc(d.psi, d.peak);
+    for (const [k, , u, dec] of TILES) {
+      const e = $("t-" + k); let v = d.v[k];
+      if (v === null || v === undefined) { e.className = "v dim"; e.textContent = "--"; continue; }
+      if (k === "kmh") v = v * 0.621371;
+      if (k === "thr") {                           // throttle plate, with the pedal under it (they differ a lot on the 3.0T)
+        e.className = "v";
+        e.innerHTML = v.toFixed(0) + "<small>%</small>" + (d.v.pedal != null ? `<span class="sub">pedal ${d.v.pedal.toFixed(0)}%${d.v.bypass != null ? ` · bypass ${d.v.bypass.toFixed(0)}°` : ""}</span>` : "");
+        continue;
+      }
+      if (k === "rpm") {                           // RPM with the calculated gear under it
+        e.className = "v";
+        e.innerHTML = v.toFixed(0) + (d.v.gear != null ? `<span class="sub">${d.v.gear ? "gear " + d.v.gear : "gear –"}${d.trans === "S" || d.trans === "M" ? " " + d.trans : ""}</span>` : "");
+        continue;
+      }
+      if (k === "tim") {                           // timing, with the worst cylinder's knock retard under it
+        const kn = d.v.knock;
+        e.className = "v" + (kn != null && kn <= -3 ? " red" : kn != null && kn <= -1 ? " amber" : "");
+        e.innerHTML = v.toFixed(1) + "<small>°</small>" +
+          (kn != null ? `<span class="sub">${kn > -0.05 ? "no knock" : `knock ${kn.toFixed(1)}° cyl ${d.v.kcyl}`}</span>` : "");
+        continue;
+      }
+      if (k === "map") {                           // OBD manifold pressure as boost, with the ECU's target under it
+        const baro = d.v.baro ?? 101.3, tgt = d.v.mapc;
+        const b = (v - baro) * 0.145038;
+        e.className = "v";
+        e.innerHTML = (b < 0 ? (-b * INHG).toFixed(0) + "<small>inHg</small>" : b.toFixed(1) + "<small>psi</small>") +
+          (tgt != null ? `<span class="sub">target ${((tgt - baro) * 0.145038).toFixed(1)}</span>` : "");
+        continue;
+      }
+      e.className = "v " + warnOf(k, v);
+      e.innerHTML = v.toFixed(dec) + (u ? `<small>${u}</small>` : "");
+    }
+    renderTiles2(d);
+    const al = $("alert");
+    if (d.warn) { al.hidden = false; al.textContent = d.warn.text; al.classList.toggle("red", !!d.warn.red); } else al.hidden = true;
+    if (d.pulls !== pullsSeen) { pullsSeen = d.pulls; loadPulls(); }
+    if (d.runs !== runsSeen) { runsSeen = d.runs; if (tab === "runs") loadRuns(); }
+    if (d.hv !== healthSeen) { healthSeen = d.hv; if (tab === "health") loadHealth(); }
+    if (d.clock === false && !clockSent) sendClock();
+    const o = d.obd;
+    $("facts").innerHTML = [
+      ["OBD", o.state + (o.rate ? `, ${o.rate.toFixed(0)} replies/s` : "")],
+      ["Logging", d.log.open ? `${d.log.file || "starting"}, ${(d.log.bytes / 1024).toFixed(0)} KB` : (!d.log.on ? "off" : d.log.held ? "stopped until the next engine start" : "waiting for the engine")],
+      ["Frame rate", d.perf ? `${d.perf.fps} fps (unchanged frames are skipped), longest pause ${d.perf.gap} ms` : "--"],
+      ["Sender", `${d.vsig.toFixed(3)} V, zero ${d.zero.toFixed(3)} V`],
+      ["Display", `page ${d.page + 1} of ${d.pages}, ${d.lights ? "headlights on" : "daylight"}, brightness ${d.br}`],
+      ["G-meter", gText(d.g)],
+    ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+    if (tab === "set") { renderCal(d); renderG(d.g); }
+  }
+  async function poll() {
+    try { renderLive(await get("/api/live")); }
+    catch (e) { $("link").classList.remove("on"); $("status").textContent = "Can't reach the pod. Is the phone on its Wi-Fi?"; }
+    setTimeout(poll, tab === "live" || tab === "set" ? 200 : 1000);
+  }
+
+  $("b-peak").onclick = () => post("/api/cmd", { do: "peak" }).then(() => toast("Peak reset"));
+  $("b-prev").onclick = () => post("/api/cmd", { do: "page", n: -1 });
+  $("b-next").onclick = () => post("/api/cmd", { do: "page", n: 1 });
+  $("b-zero").onclick = () => { if (confirm("Re-zero the boost sensor? Only do this with the engine off.")) post("/api/cmd", { do: "rezero" }).then(() => toast("Re-zeroing")); };
+
+  // ---------------------------------------------------------- G-meter
+  function gText(g) {
+    if (!g || !g.imu) return "no motion sensor";
+    if (g.state === 0) return "learning level: stop for 2 s";
+    if (g.state === 1) return "learning forward: accelerate in a straight line";
+    const lat = g.lat >= 0 ? `${g.lat.toFixed(2)} right` : `${(-g.lat).toFixed(2)} left`;
+    const lon = g.lon >= 0 ? `${g.lon.toFixed(2)} accel` : `${(-g.lon).toFixed(2)} braking`;
+    return `${lat}, ${lon} (g)`;
+  }
+  function renderG(g) {
+    if (!g) return;
+    const fwd = ["not set", "assumed (screen facing you)", "learned from driving"][g.fwd] || "?";
+    $("gfacts").innerHTML = (g.imu ? [
+      ["Now", gText(g)],
+      ["Level", g.state === 0 ? "not learned yet" : `learned (${g.stops} stop${g.stops === 1 ? "" : "s"})`],
+      ["Forward", fwd],
+      ["Peaks (g)", `left ${g.pk[0].toFixed(2)}, right ${g.pk[1].toFixed(2)}, accel ${g.pk[2].toFixed(2)}, braking ${g.pk[3].toFixed(2)}`],
+    ] : [["Sensor", "no QMI8658 found on the I2C bus"]]).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+  }
+  $("b-glevel").onclick = () => post("/api/cmd", { do: "glevel" }).then(() => toast("Re-levelling: keep the car still for 2 s"));
+  $("b-gpeak").onclick = () => post("/api/cmd", { do: "gpeak" }).then(() => toast("G peaks reset"));
+  $("b-gforget").onclick = () => { if (confirm("Forget the G-meter calibration? It relearns at the next stop and the next few pulls.")) post("/api/cmd", { do: "gforget" }).then(() => toast("G-meter calibration cleared")); };
+
+  // ---------------------------------------------------------- calibration
+  let suggested = null;
+  function renderCal(d) {
+    const map = d.v.map, baro = d.v.baro;
+    $("calfacts").innerHTML = [
+      ["Sender now", d.vsig.toFixed(3) + " V"], ["Zero (engine off)", d.zero.toFixed(3) + " V"],
+      ["Manifold (OBD)", map == null ? "--" : map.toFixed(0) + " kPa"], ["Barometer (OBD)", baro == null ? "--" : baro.toFixed(0) + " kPa"],
+    ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+    suggested = null;
+    if (map == null || baro == null) $("suggest").textContent = "Waiting for OBD manifold pressure…";
+    else if (baro - map < 30) $("suggest").textContent = "Needs a steady idle: manifold pressure should be at least 30 kPa below the barometer.";
+    else {
+      suggested = (d.zero - d.vsig) / ((baro - map) * 0.145038);
+      if (!(suggested > 0.02 && suggested < 0.3)) {     // same limits the pod accepts
+        suggested = null;
+        $("suggest").textContent = "The sender isn't reading vacuum (it should be below its zero at idle). Check the boost hose and the sender wiring.";
+        $("b-usecal").disabled = true;
+        return;
+      }
+      $("suggest").innerHTML = `Suggested <b>${suggested.toFixed(4)}</b> V per psi (now ${settings ? settings.vPerPsi.toFixed(4) : "…"}). Idle reads ${((baro - map) * 0.145038 * INHG).toFixed(1)} inHg by OBD.`;
+    }
+    $("b-usecal").disabled = !(suggested > 0.02 && suggested < 0.3);
+  }
+  $("b-usecal").onclick = () => { $("vPerPsi").value = suggested.toFixed(4); toast("Filled in. Save settings to keep it."); };
+
+  // ---------------------------------------------------------- settings
+  const FIELDS = ["vPerPsi", "obdTrim", "oilTrimF", "redPsi", "shiftRpm", "redlineRpm", "peakHoldS", "telltale", "digital", "nightTheme", "brightDay", "brightDimMin",
+                  "brightDimMax", "autoAlert", "autoPull", "autoLaunch", "perfRollout", "obdLagMs", "logOn", "logEngineOnly", "logHz", "obdOn", "obdName", "wifiOn", "apSsid", "apPass"];
+  async function loadSettings() {
+    settings = await get("/api/settings");
+    redPsi = settings.redPsi;
+    for (const k of FIELDS) { const e = $(k); if (e.type === "checkbox") e.checked = !!settings[k]; else e.value = settings[k]; }
+    showFw(settings.fw);
+    $("trimnote").textContent = settings.trimN > 0
+      ? `Now ${settings.trimPsi >= 0 ? "+" : ""}${settings.trimPsi.toFixed(2)} psi, from ${settings.trimN} idle readings`
+      : "Learns the sender's small running offset against the car's own manifold sensor (at a steady idle)";
+  }
+  $("setform").onsubmit = async (ev) => {
+    ev.preventDefault();
+    const data = {};
+    for (const k of FIELDS) { const e = $(k); data[k] = e.type === "checkbox" ? (e.checked ? 1 : 0) : e.value; }
+    if (data.apPass.length < 8) { toast("Wi-Fi password needs at least 8 characters"); return; }
+    const r = await post("/api/settings", data);
+    toast(r.ok ? (r.restart ? "Saved. Restart the pod for Wi-Fi changes." : "Settings saved") : "Not saved: " + (r.error || "check the values"));
+    loadSettings();
+  };
+  $("b-defaults").onclick = () => { if (confirm("Reset every setting to the firmware defaults?")) post("/api/cmd", { do: "defaults" }).then(() => { toast("Defaults restored"); loadSettings(); }); };
+  // ---------------------------------------------------------- firmware update
+  function showFw(fw) {
+    if (!fw) return;
+    $("fwfacts").innerHTML = [
+      ["Running", (fw.version ? `version ${fw.version}, ` : "") + `built ${fw.built}`],
+      ["Slot", fw.slot + (fw.trial ? " (new, on trial for its first 30 s)" : "")],
+    ].concat(fw.rolledBack ? [["Last update", "didn't start properly, so the previous firmware was kept"]] : [])
+     .map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+  }
+  let fwFile = null;
+  $("fwfile").onchange = async () => {
+    const f = $("fwfile").files[0]; fwFile = null; $("b-fw").disabled = true;
+    if (!f) return;
+    const n = f.name.toLowerCase();
+    if (!n.endsWith(".bin") || /merged|bootloader|partitions/.test(n)) { $("fwnote").textContent = `${f.name} isn't the app firmware. Pick S5GaugePod_Test.ino.bin.`; return; }
+    const h = new Uint8Array(await f.slice(0, 36).arrayBuffer());
+    if (h[0] !== 0xE9 || h[32] !== 0x32 || h[33] !== 0x54 || h[34] !== 0xCD || h[35] !== 0xAB) { $("fwnote").textContent = `${f.name} doesn't look like ESP32 app firmware.`; return; }
+    if (f.size > 3 * 1024 * 1024) { $("fwnote").textContent = "That file is bigger than the 3 MB app slot."; return; }
+    fwFile = f; $("b-fw").disabled = false;
+    $("fwnote").textContent = `${f.name}, ${(f.size / 1024).toFixed(0)} KB, ready to install.`;
+  };
+  $("b-fw").onclick = () => {
+    if (!fwFile || !confirm(`Install ${fwFile.name}? Logging stops while it uploads, then the pod restarts.`)) return;
+    $("b-fw").disabled = true; $("fwbarwrap").hidden = false; $("fwbar").style.width = "0";
+    const fd = new FormData(); fd.append("fw", fwFile, fwFile.name);
+    const x = new XMLHttpRequest();
+    x.open("POST", "/api/update");
+    x.setRequestHeader("X-Size", String(fwFile.size));
+    x.upload.onprogress = (e) => { if (e.lengthComputable) { $("fwbar").style.width = (e.loaded / e.total * 100).toFixed(0) + "%"; $("fwnote").textContent = `Uploading… ${(e.loaded / e.total * 100).toFixed(0)}%`; } };
+    x.onload = () => {
+      let r = {}; try { r = JSON.parse(x.responseText); } catch (e) {}
+      if (x.status === 200 && r.ok) { $("fwnote").textContent = "Installed. The pod is restarting into the new build…"; waitForPod(); }
+      else { $("fwnote").textContent = "Not installed: " + (r.error || "the pod didn't accept it"); $("b-fw").disabled = false; }
+    };
+    x.onerror = () => { $("fwnote").textContent = "Lost the connection during the upload. Nothing was changed; try again."; $("b-fw").disabled = false; };
+    x.send(fd);
+  };
+  function waitForPod() {                          // poll until the pod is back, then show what it runs
+    let tries = 0;
+    const t = setInterval(async () => {
+      tries++;
+      try {
+        const s = await get("/api/settings");
+        clearInterval(t); showFw(s.fw);
+        $("fwnote").textContent = s.fw && s.fw.trial ? "Back up on the new build. It's kept once it has run for 30 s." : "Back up.";
+        $("fwbarwrap").hidden = true;
+      } catch (e) { if (tries > 40) { clearInterval(t); $("fwnote").textContent = "The pod hasn't come back yet. Reconnect to its Wi-Fi and reload this page."; } }
+    }, 1500);
+  }
+  $("b-restart").onclick = () => { if (confirm("Restart the pod? The screen goes dark for a few seconds.")) post("/api/cmd", { do: "restart" }).then(() => toast("Restarting")); };
+
+  // ---------------------------------------------------------- logs
+  async function loadLogs() {
+    const d = await get("/api/logs");
+    const where = d.where === "sd" ? "the SD card" : "the internal flash";
+    const free = d.where === "sd" ? d.sdFreeKB : d.flashFreeKB;
+    const freeTxt = free > 1048576 ? (free / 1048576).toFixed(1) + " GB" : (free / 1024).toFixed(1) + " MB";
+    const now = d.open ? `Recording ${d.file || "(starting)"} on ${where}: ${(d.bytes / 1024).toFixed(0)} KB so far${d.dropped ? `, ${d.dropped} lines dropped` : ""}. `
+      : !d.on ? "Logging is off in Settings. " : d.held ? "Stopped. The next log starts at the next engine start. " : `Waiting for the engine. Logs go to ${where}. `;
+    const saved = d.files.filter(f => !f.rec).length;
+    $("logsum").textContent = !d.fs ? "No log storage: no SD card, and the internal flash isn't set up (Partition Scheme: 16M Flash, 3MB APP / 9.9MB FATFS)."
+      : now + `${saved} drive${saved === 1 ? "" : "s"} saved, ${freeTxt} free` + (d.sd ? "." : " (no SD card).") +
+        (d.where !== "sd" && d.worstMs ? ` Slowest flash write ${d.worstMs} ms.` : "") + (d.err ? ` Problem: ${d.err}` : "") +
+        (d.flashBad ? " The internal storage didn't mount (a power cut at a bad moment). It has been left as it is, with the Health history in it; formatting erases that and makes it usable again." : "");
+    $("b-logtoggle").textContent = d.open ? "Stop this log" : (d.on ? "Logging is on" : "Logging is off");
+    $("b-logtoggle").disabled = !d.open;
+    $("b-fmt").style.display = d.flashBad ? "" : "none";   // only after the internal flash failed to mount
+    const q = (f) => `f=${encodeURIComponent(f.n)}&at=${f.at}`;
+    const both = d.files.some(f => f.at === "sd") && d.files.some(f => f.at !== "sd");
+    // when the drive ended (the file's time stamp; 0 = saved before the clock was set)
+    const ended = (f) => f.t ? new Date(f.t * 1000) : null;
+    const endTxt = (f) => { const e = ended(f); return e ? e.toLocaleDateString([], { month: "numeric", day: "numeric" }) + " " + e.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : ""; };
+    const pad = (n) => String(n).padStart(2, "0");
+    const saveAs = (f) => { const e = ended(f); return e ? `${f.n.replace(".csv", "")}_${e.getFullYear()}-${pad(e.getMonth() + 1)}-${pad(e.getDate())}_${pad(e.getHours())}${pad(e.getMinutes())}.csv` : f.n; };
+    $("loglist").innerHTML = d.files.length ? d.files.map(f =>
+      `<tr><td class="n">${f.n.replace(".csv", "")}${both ? `<small class="at">${f.at === "sd" ? "SD" : "flash"}</small>` : ""}${f.t ? `<br><small class="when" title="when the drive ended">${endTxt(f)}</small>` : ""}</td><td class="s">${(f.s / 1024).toFixed(0)} KB</td>
+       <td class="a">${f.rec ? `<span class="rec">Recording</span>` :
+         `<button data-v="${q(f)}">View</button> <a class="btn" href="/log?${q(f)}" download="${saveAs(f)}">Save</a> <button data-d="${q(f)}" data-n="${f.n}" class="warn">Delete</button>`}</td></tr>`).join("")
+      : `<tr><td>No drives logged yet. A log starts when the engine runs.</td></tr>`;
+    $("loglist").querySelectorAll("[data-d]").forEach(b => b.onclick = () => {
+      if (!confirm("Delete " + b.dataset.n + "?")) return;
+      const p = new URLSearchParams(b.dataset.d);
+      post("/api/logdel", { f: p.get("f"), at: p.get("at") }).then(loadLogs);
+    });
+    $("loglist").querySelectorAll("[data-v]").forEach(b => b.onclick = () => viewLog(b.dataset.v));
+  }
+  $("b-logref").onclick = loadLogs;
+  $("b-fmt").onclick = () => { if (confirm("Format the pod's internal storage? Logs kept there and the Health history are erased (the SD card is not touched). The pod restarts.")) post("/api/cmd", { do: "formatflash" }).then(r => toast(r.ok ? "Formatted. Restarting" : (r.error || "Not formatted"))); };
+  $("b-logtoggle").onclick = () => post("/api/cmd", { do: "logstop" }).then(() => { toast("Saving the log"); setTimeout(loadLogs, 1500); });
+
+  async function viewLog(query) {
+    const name = new URLSearchParams(query).get("f");
+    const res = await fetch("/log?" + query);
+    if (!res.ok) { toast(await res.text()); return; }
+    const txt = await res.text();
+    const rows = txt.trim().split("\n"), head = rows.shift().split(",");
+    const ix = (n) => head.indexOf(n);
+    const t = [], psi = [], rpm = [];
+    for (const r of rows) { const c = r.split(","); t.push(+c[ix("ms")] / 1000); psi.push(+c[ix("psi")]); rpm.push(c[ix("rpm")] === "" ? NaN : +c[ix("rpm")]); }
+    if (!t.length) { toast("That log is empty"); return; }
+    $("chart").hidden = false;
+    const cv = $("cv"), g = cv.getContext("2d"), W = cv.width, H = cv.height, t0 = t[0], t1 = t[t.length - 1] || t0 + 1;
+    g.clearRect(0, 0, W, H);
+    const x = (v) => 8 + (v - t0) / (t1 - t0 || 1) * (W - 16);
+    const yP = (v) => H * 0.55 - v / 30 * H * 0.5;             // boost: zero line at 55%
+    const yR = (v) => H - 8 - v / 8000 * (H * 0.4);           // rpm band at the bottom
+    g.strokeStyle = "#3a3e44"; g.lineWidth = 1; g.beginPath(); g.moveTo(0, yP(0)); g.lineTo(W, yP(0)); g.stroke();
+    g.strokeStyle = "rgba(242,22,62,.5)"; g.beginPath(); g.moveTo(0, yP(redPsi)); g.lineTo(W, yP(redPsi)); g.stroke();
+    const line = (ys, f, col, w) => { g.strokeStyle = col; g.lineWidth = w; g.beginPath(); let on = false; ys.forEach((v, i) => { if (isNaN(v)) { on = false; return; } const X = x(t[i]), Y = f(v); on ? g.lineTo(X, Y) : g.moveTo(X, Y); on = true; }); g.stroke(); };
+    line(rpm, yR, "#8f949b", 2);
+    line(psi, yP, "#f4f4f1", 3);
+    const pk = Math.max(...psi), iPk = psi.indexOf(pk), rMax = Math.max(...rpm.filter(v => !isNaN(v)), 0);
+    g.fillStyle = "#f2163e"; g.beginPath(); g.arc(x(t[iPk]), yP(pk), 6, 0, 7); g.fill();
+    const dur = t1 - t0;
+    $("chartfacts").innerHTML = [
+      ["Drive", `${name.replace(".csv", "")}, ${Math.floor(dur / 60)} min ${Math.round(dur % 60)} s`],
+      ["Peak boost", `${pk.toFixed(1)} psi at ${(t[iPk] - t0).toFixed(0)} s`],
+      ["Max RPM", rMax ? rMax.toFixed(0) : "no OBD data"],
+      ["Lines", "white = boost (psi), grey = RPM, red line = red zone"],
+    ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+    $("chart").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  // ---------------------------------------------------------- OBD
+  async function loadObd() {
+    if (tab === "obd") {
+      try {
+        const d = await get("/api/obd");
+        $("obdfacts").innerHTML = [
+          ["State", d.state + (d.msg ? ` (${d.msg})` : "")], ["Adapter", d.dev ? `${d.dev} (${d.addr})` : "none yet"],
+          ["Replies", d.rate ? d.rate.toFixed(1) + " per second" : "--"],
+          ["Adapter firmware", d.elm || "--"], ["Protocol", d.proto || "--"],
+          ["Requests go to", d.state === "running" ? (d.ecu ? "engine ECU (7E0)" : "all ECUs (7DF)") + (d.suffix ? ", fast reply on" + (d.suffix22 ? " (Mode 01 and 22)" : " (Mode 01)") : "") : "--"],
+          ["Long answers<br><small>frame-count suffix: average reply with / without</small>", d.state !== "running" ? "--" :
+            (d.suffixMulti ? "frame count on" : "frame count off (no faster, or cut answers short)") +
+            (d.nSfx || d.nPlain ? `<br>${d.nSfx ? d.msSfx + " ms" : "--"} with (${d.nSfx}) · ${d.nPlain ? d.msPlain + " ms" : "--"} without (${d.nPlain})` : "")],
+          ["Intake from", d.cacFromIat ? "010F (the car has no 0177)" : "0177 charge air cooler"],
+          ["Supported PIDs", d.pids || "--"],
+          ["Gearbox temps<br><small>7E1 1259 clutch oil / 125A / 125B</small>", d.gbt && d.gbt.some(v => v != null)
+            ? d.gbt.map(c => c == null ? "--" : `${c}°C / ${Math.round(c * 1.8 + 32)}°F <small>(0x${(c + 40).toString(16).toUpperCase().padStart(2, "0")})</small>`).join("<br>")
+            : "--"],
+          ["Sport diff temps<br><small>71D 1306 / 1307: 1307 is probably the oil</small>", d.dift && d.dift.some(v => v != null)
+            ? d.dift.map(c => c == null ? "--" : `${c}°C / ${Math.round(c * 1.8 + 32)}°F <small>(0x${(c + 40).toString(16).toUpperCase().padStart(2, "0")})</small>`).join("<br>")
+            : "--"],
+          ["Gearbox program<br><small>7E1 1035 / 1026</small>", d.trans ? { D: "D", S: "S (lever or Dynamic)", M: "Manual" }[d.trans] : "--"],
+          ["Brake pedal<br><small>7E0 16CE / 16CF</small>", d.brake === 1 ? "Pressed" : d.brake === 0 ? "Released" : "--"],
+          ["Parking brake<br><small>752 2B78</small>", d.epb === 1 ? "Applied" : d.epb === 0 ? "Released" : "--"],
+          ["Car clock<br><small>712 2BC1</small>", d.car != null ? new Date(d.car * 1000).toLocaleString([], { timeZone: "UTC", dateStyle: "medium", timeStyle: "medium" }) +
+            (d.tz != null ? ` <small>(UTC${d.tz >= 0 ? "+" : "−"}${Math.abs(d.tz / 3600)})</small>` : " <small>(time zone not learned yet)</small>") : "--"],
+          ["Pod clock set by", ["not set", "its own clock (RTC)", "your phone", "the car's clock"][d.clockSrc || 0]],
+          ["Odometer", d.odo != null ? `${d.odo.toLocaleString()} km / ${Math.round(d.odo * 0.621371).toLocaleString()} mi` : "--"],
+        ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+        $("pollwrap").innerHTML = pollTable(d);
+        const lg = $("obdlog"), atEnd = lg.scrollTop + lg.clientHeight >= lg.scrollHeight - 4;
+        lg.textContent = (d.log || []).join("\n");
+        if (atEnd) lg.scrollTop = lg.scrollHeight;
+        if (d.reply !== null && d.reply !== undefined && waiting) { $("reply").textContent = d.reply; waiting = false; }
+      } catch (e) {}
+    }
+    setTimeout(loadObd, waiting ? 300 : 1500);
+  }
+  // what each polled request is, in words
+  const POLL_NAMES = {
+    "010C0D": "RPM + speed", "010C": "RPM", "0105": "Coolant", "0177": "Intake (after intercooler)", "010F": "Intake air", "015C": "Oil (standard PID)",
+    "0111": "Throttle plate", "010E": "Timing", "ATRV": "Battery (adapter)", "0170": "Manifold pressure + target", "01343844": "AFR banks 1, 2 + target",
+    "01463C3D": "Outside air + cat temps", "2210702982": "Pedal + bypass", "222029": "Boost target", "22130E130F1321": "Fuel pressures", "2213A5": "Injector pulse",
+    "2220A1100311D6": "Oil, pre-supercharger, IC pump", "2213F213F313F4": "Knock cyl 1–3", "2213F513F613F7": "Knock cyl 4–6", "010B": "Manifold pressure (standard)",
+    "0133": "Barometer", "010D": "Speed", "2210351026": "Gearbox D / S / M", "221259125A125B": "Gearbox temps", 
+    "221306": "Diff temps", "222BC1": "Car clock (steering)", "2216CE16CF": "Brake pedal", "222B78": "Parking brake", "011519": "Rear O2 sensors",
+    "0621": "Catalyst self-tests", "22121C": "Odometer",
+  };
+  const pollMs = ms => !ms ? "--" : ms >= 10000 ? (ms / 1000).toFixed(0) + " s" : ms >= 1000 ? (ms / 1000).toFixed(1) + " s" : Math.round(ms) + " ms";
+  function pollTable(d) {
+    if (!d.poll || d.state !== "running") return `<p class="note">Shows once the adapter is running.</p>`;
+    const rows = d.poll.filter(p => p[5] !== 2).map(([cmd, ask, askB, got, gotB, st, fl]) => {
+      const tags = [fl & 1 ? "waits in pulls" : "", fl & 2 ? "stopped only" : "", st === 1 ? "dropped (car refused it)" : ""].filter(Boolean).join(", ");
+      const asks = ask ? pollMs(ask) + (askB ? `<br><small>${pollMs(askB)} boost</small>` : "") : "every<br>round";
+      const slow = ask && got > ask * 1.5, slowB = ask && gotB > (askB || ask) * 1.5;   // well behind what it asks for
+      return `<tr><td>${POLL_NAMES[cmd] || cmd}<br><small>${cmd}${tags ? "<br>" + tags : ""}</small></td><td>${asks}</td>` +
+             `<td${slow ? ' class="warn"' : ""}>${pollMs(got)}</td><td${slowB ? ' class="warn"' : ""}>${pollMs(gotB)}</td></tr>`;
+    }).join("");
+    return `<div class="cwrap"><table class="cands poll"><thead><tr><th>Reading</th><th>Asks</th><th>Gets</th><th>On boost</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  let waiting = false;
+  $("b-send").onclick = () => { const c = $("cmd").value.trim().toUpperCase(); if (!c) return; $("reply").textContent = "Waiting for the adapter…"; waiting = true; post("/api/obdcmd", { c }).then(r => { if (!r.ok) { waiting = false; $("reply").textContent = r.error || "Not sent."; } }); };
+  $("cmd").onkeydown = (e) => { if (e.key === "Enter") $("b-send").click(); };
+  $("b-forget").onclick = () => post("/api/cmd", { do: "forget" }).then(() => toast("Adapter forgotten. The pod will search again."));
+
+  // ---------------------------------------------------------- identifier finder
+  async function loadScan() {
+    if (tab === "obd") {
+      try {
+        const d = await get("/api/scan");
+        const running = d.mode !== 0;
+        $("sc-barwrap").hidden = !running;
+        if (running) $("sc-bar").style.width = (d.total ? 100 * d.done / d.total : 0).toFixed(1) + "%";
+        const eta = running && d.done > 20 ? Math.max(0, Math.round((d.total - d.done) * d.secs / d.done)) : null;
+        const what = d.mode === 1 ? `Scanning ${d.hdr} ${d.from}–${d.to}` : d.mode === 2 ? `Reading again as ${d.snaps[d.snaps.length - 1]}` : "";
+        const mods = d.mods || [];
+        $("md-list").innerHTML = mods.length ? `<div class="cwrap"><table class="cands"><thead><tr><th>Ask on</th><th>Answers on</th><th>Name</th><th></th></tr></thead><tbody>` +
+          mods.map(m => `<tr><td>${m.a}</td><td>${m.r}</td><td>${m.n ? esc(m.n) : (d.mode === 3 ? "…" : "")}</td><td><button class="mini" data-a="${m.a}">Use</button></td></tr>`).join("") + "</tbody></table></div>" : "";
+        $("md-list").querySelectorAll("button[data-a]").forEach(b => b.onclick = () => { $("sc-hdr").value = b.dataset.a; $("cmd").value = b.dataset.a + ":22F190"; toast(`${b.dataset.a} set in the console and the finder`); });
+        $("sc-mods").innerHTML = `<option value="7E0">Engine</option><option value="7E1">Gearbox</option>` + mods.filter(m => m.a !== "7E0" && m.a !== "7E1").map(m => `<option value="${m.a}">${esc(m.n || "")}</option>`).join("");
+        $("b-mods").disabled = running;
+        if (d.mode === 3) {
+          $("sc-status").textContent = `Finding modules: ${d.done} of ${d.total}, ${mods.length} answering`;
+        } else $("sc-status").textContent = running
+          ? `${what}: ${d.done} of ${d.total}, ${d.found} answering` + (eta != null ? `, about ${eta < 90 ? eta + " s" : Math.round(eta / 60) + " min"} left` : "")
+          : (d.msg ? d.msg[0].toUpperCase() + d.msg.slice(1) + ". " : "") + (d.found ? `${d.found} identifiers answered on ${d.hdr}. Readings: ${d.snaps.join(", ")}.` : "Nothing scanned yet.") +
+            (d.snaps.length === 1 ? " Now change the car and press Read again." : "");
+        $("b-scan").disabled = running; $("b-snap").disabled = running || !d.found; $("b-scstop").disabled = !running;
+        const strong = d.snaps.length >= 3;
+        $("sc-cands").innerHTML = !running && d.snaps.length >= 2 ? (d.cands.length
+          ? `<div class="cwrap"><table class="cands"><thead><tr><th>ID</th>${d.snaps.map(s => `<th>${s}</th>`).join("")}</tr></thead><tbody>` +
+            d.cands.map(c => `<tr class="${c.score >= 150 ? "strong" : ""}"><td>22${c.did}</td>${c.v.map((v, k) => `<td class="${k && v !== c.v[0] ? "chg" : ""}">${v}</td>`).join("")}</tr>`).join("") + "</tbody></table></div>" +
+            (strong ? "" : `<p class="note">Read each state twice to weed out values that drift on their own.</p>`)
+          : `<p class="note">Nothing changed only with your switches. Try another range, or the gearbox.</p>`) : "";
+      } catch (e) {}
+    }
+    setTimeout(loadScan, tab === "obd" ? 1000 : 3000);
+  }
+  const scanPost = async (data) => { const r = await post("/api/scan", data); if (!r.ok) toast(r.error || "Not started"); setTimeout(loadScan, 300); };
+  $("b-scan").onclick = () => {
+    const label = $("sc-label").value.trim() || "A";
+    if (!/^[0-9a-f]{1,4}$/i.test($("sc-from").value) || !/^[0-9a-f]{1,4}$/i.test($("sc-to").value)) { toast("From and To are 4 hex digits, like 1000"); return; }
+    if (!/^[0-9a-f]{3}$/i.test($("sc-hdr").value)) { toast("Ask is a 3-digit address, like 7E0"); return; }
+    if (!confirm(`Scan ${$("sc-hdr").value.toUpperCase()} from ${$("sc-from").value.toUpperCase()} to ${$("sc-to").value.toUpperCase()}? The gauges stop updating while it runs, and this clears the last scan.`)) return;
+    scanPost({ do: "discover", hdr: $("sc-hdr").value.toUpperCase(), from: $("sc-from").value, to: $("sc-to").value, label });
+  };
+  $("b-snap").onclick = () => { const label = $("sc-label").value.trim(); if (!label) { toast("Type what the car is set to now"); return; } scanPost({ do: "snap", label }); };
+  $("b-scstop").onclick = () => scanPost({ do: "stop" });
+  $("b-mods").onclick = () => { if (confirm("Ask every address which modules answer? About a minute, and the gauges pause.")) scanPost({ do: "modules" }); };
+  $("b-scclear").onclick = () => { if (confirm("Clear the scan and its readings?")) scanPost({ do: "clear" }); };
+
+  // ---------------------------------------------------------- ECU self-tests (Mode 06)
+  const MIDN = { 0x01: "O2 sensor, bank 1 front", 0x02: "O2 sensor, bank 1 rear", 0x05: "O2 sensor, bank 2 front", 0x06: "O2 sensor, bank 2 rear",
+    0x21: "Catalyst, bank 1", 0x22: "Catalyst, bank 2", 0x31: "EGR", 0x35: "Valve timing, bank 1", 0x36: "Valve timing, bank 2",
+    0x39: "Evap: cap off", 0x3A: "Evap: 0.090\" leak", 0x3B: "Evap: 0.040\" leak", 0x3C: "Evap: 0.020\" leak", 0x3D: "Evap: purge flow",
+    0x41: "O2 heater, bank 1 front", 0x42: "O2 heater, bank 1 rear", 0x45: "O2 heater, bank 2 front", 0x46: "O2 heater, bank 2 rear",
+    0xA1: "Misfire, all cylinders", 0xA2: "Misfire, cylinder 1", 0xA3: "Misfire, cylinder 2", 0xA4: "Misfire, cylinder 3", 0xA5: "Misfire, cylinder 4", 0xA6: "Misfire, cylinder 5", 0xA7: "Misfire, cylinder 6" };
+  const hx = (v, n) => v.toString(16).toUpperCase().padStart(n, "0");
+  // where a result sits against its limits: only an upper limit (min 0), only a lower one (max FFFF), or a range
+  function testView(t) {
+    const pass = t.val >= t.min && t.val <= t.max;
+    if (t.val === 0 && t.min === 0 && t.max === 0) return { pass: null, text: "not run yet" };
+    if (t.min === 0 && t.max !== 0xFFFF) return { pass, pct: t.max ? t.val / t.max * 100 : 0, text: `${(t.max ? t.val / t.max * 100 : 0).toFixed(1)} % of the limit` };
+    if (t.max === 0xFFFF && t.min > 0) return { pass, text: `${((t.val - t.min) / t.min * 100).toFixed(0)} % above the lower limit` };
+    if (t.max > t.min) return { pass, text: `${((t.val - t.min) / (t.max - t.min) * 100).toFixed(0)} % through the allowed range` };
+    return { pass, text: "no limits given" };
+  }
+  const MON = [[0, "Catalyst"], [2, "Evap"], [5, "O2 sensors"], [6, "O2 heaters"], [7, "EGR / valve timing"]];
+  const monText = (m) => MON.filter(([b]) => m.since[2] >> b & 1).map(([b, n]) =>
+    `${n}: ${m.since[3] >> b & 1 ? "not yet run since the codes were cleared" : "done"}${m.since[3] >> b & 1 ? "" : m.drive[3] >> b & 1 ? " (not yet this drive)" : " (and this drive)"}`).join(" · ");
+  let selfWait = false;
+  async function loadSelf() {
+    let d; try { d = await get("/api/selftest"); } catch (e) { return; }
+    if (d.busy) { $("st-status").textContent = "Reading the self-tests…"; setTimeout(loadSelf, 700); return; }
+    $("b-self").disabled = false;
+    if (d.age == null) { $("st-status").textContent = selfWait ? "No answer from the ECU." : ""; return; }
+    selfWait = false;
+    $("st-status").textContent = `${d.tests.length} results, read ${d.age < 90 ? d.age + " s" : Math.round(d.age / 60) + " min"} ago.` + (d.mon ? " " + monText(d.mon) + "." : "");
+    $("st-list").innerHTML = d.tests.length ? `<div class="cwrap"><table class="cands"><thead><tr><th>Test</th><th>Result</th><th>Raw (min–max)</th></tr></thead><tbody>` +
+      d.tests.map(t => { const v = testView(t);
+        return `<tr><td>${esc(MIDN[t.mid] || "Monitor " + hx(t.mid, 2))} <small>${hx(t.mid, 2)}/${hx(t.tid, 2)}</small></td>` +
+          `<td><span class="verdict ${v.pass == null ? "na" : v.pass ? "ok" : "bad"}">${v.pass == null ? "Not run" : v.pass ? "Pass" : "Fail"}</span> ${v.text}</td>` +
+          `<td>${hx(t.val, 4)} <small>(${hx(t.min, 4)}–${hx(t.max, 4)})</small></td></tr>`; }).join("") + "</tbody></table></div>" : "";
+  }
+  $("b-self").onclick = async () => {
+    const r = await post("/api/selftest", {}); if (!r.ok) { toast(r.error || "Not started"); return; }
+    $("b-self").disabled = true; selfWait = true; $("st-status").textContent = "Reading the self-tests…"; setTimeout(loadSelf, 900);
+  };
+
+  // ---------------------------------------------------------- health trends
+  // /health.bin: a 16-byte header, then 74-byte records (firmware health.h, little-endian)
+  const NONE = -32768;
+  function parseHealth(buf) {
+    const v = new DataView(buf);
+    if (buf.byteLength < 16 || v.getUint32(0, true) !== 0x31544C48) return null;
+    const size = v.getUint16(4, true), baseSeq = v.getUint32(8, true), recs = [];
+    for (let o = 16; o + size <= buf.byteLength; o += size) {
+      const i16 = (k, sc) => { const x = v.getInt16(o + k, true); return x === NONE ? null : x / sc; };
+      const bins = []; for (let b = 0; b < 10; b++) { const x = v.getInt8(o + 20 + b); bins.push(x === -128 ? null : x / 4); }
+      recs.push({ seq: v.getUint32(o, true), when: v.getUint32(o + 4, true), odo: v.getUint32(o + 8, true), flags: v.getUint8(o + 18), gear0: v.getUint8(o + 19), bins,
+        peak: i16(30, 10), tgt: i16(32, 10), vs: i16(34, 10), knock: i16(36, 10), minTim: i16(38, 10), afrOver: i16(40, 100), afrMax: i16(42, 100),
+        idc: i16(44, 10), dur: i16(46, 10), peakRpm: v.getUint16(o + 48, true), kcyl: v.getUint8(o + 50),
+        iat0: i16(52, 1), iatMax: i16(54, 1), amb: i16(56, 1), oil: i16(58, 1), clt: i16(60, 1),
+        hpfpDef: i16(62, 1), hpfpMin: i16(64, 1), lpfpMin: i16(66, 1), catMax: i16(68, 1), kmh0: i16(70, 1), kmh1: i16(72, 1) });
+    }
+    return { baseSeq, recs };
+  }
+  const median = (a) => { const b = a.filter(x => x != null).sort((x, y) => x - y); if (!b.length) return null; const m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+  const mi = (km) => km ? Math.round(km * 0.621371) : null;
+  // what each measure is, which way is worse, and how far counts as "watch" / "worse"
+  const HM = [
+    { id: "boost", name: "Boost against the baseline", unit: "psi", dec: 1, dir: -1, watch: 0.5, bad: 1.0, zero: true, signed: true,
+      why: "Same RPM, full throttle. Falling: belt slip, a boost leak, a worn bypass valve." },
+    { id: "vsTgt", name: "Boost against the ECU's target", unit: "psi", dec: 1, dir: -1, watch: 0.7, bad: 1.2, signed: true,
+      why: "Peak boost minus what the ECU asked for. Falling: the supercharger can't keep up." },
+    { id: "hpfp", name: "High-pressure fuel: worst shortfall", unit: "psi", dec: 0, dir: -1, watch: 80, bad: 150,
+      why: "Below the pump's target. Growing: a tired high-pressure pump." },
+    { id: "lpfp", name: "Low-pressure fuel: lowest", unit: "psi", dec: 0, dir: -1, watch: 5, bad: 10,
+      why: "Falling: the in-tank pump or the fuel filter." },
+    { id: "knock", name: "Knock: most timing pulled", unit: "°", dec: 1, dir: -1, watch: 1.0, bad: 2.0,
+      why: "More negative: fuel quality, carbon build-up, plugs, heat." },
+    { id: "afr", name: "AFR: leanest against commanded", unit: "AFR", dec: 2, dir: 1, watch: 0.3, bad: 0.6, signed: true,
+      why: "Rising: fuel delivery falling behind, or an air leak after the MAF." },
+    { id: "iat", name: "Intake heat rise during the pull", unit: "°F", dec: 0, dir: 1, watch: 8, bad: 15,
+      why: "Rising: intercooler pump, a clogged heat exchanger, coolant low in the intercooler loop." },
+    { id: "idc", name: "Injector duty: highest", unit: "%", dec: 0, dir: 1, watch: 5, bad: 10,
+      why: "Rising at the same boost: the fuel system working harder for the same power." },
+  ];
+  let hData = null;
+  function healthMetrics(d) {
+    const recs = d.recs;
+    // the baseline: the first 10 pulls from baseSeq on (the ones with RPM bands for the boost curve)
+    const fromBase = recs.filter(r => r.seq >= d.baseSeq);
+    const base = fromBase.slice(0, 10);
+    const binBase = [...Array(10)].map((_, i) => median(fromBase.filter(r => !(r.flags & 4) && r.bins.filter(b => b != null).length >= 2).slice(0, 10).map(r => r.bins[i])));
+    for (const r of recs) {
+      const dv = r.bins.map((b, i) => b != null && binBase[i] != null ? b - binBase[i] : null).filter(x => x != null);
+      r.m = {
+        boost: dv.length >= 2 && !(r.flags & 4) ? median(dv) : null,
+        vsTgt: r.peak != null && r.tgt != null && r.tgt > 3 ? r.peak - r.tgt : null,
+        hpfp: r.hpfpDef, lpfp: r.lpfpMin, knock: r.knock, afr: r.afrOver,
+        iat: r.iat0 != null && r.iatMax != null ? r.iatMax - r.iat0 : null, idc: r.idc,
+      };
+    }
+    const recent = fromBase.length >= 10 ? recs.slice(-10).filter(r => !base.includes(r)) : [];
+    return { base, recent, fromBase };
+  }
+  function hVerdict(m, base, recent) {
+    const b = m.zero ? 0 : median(base.map(r => r.m[m.id])), c = median(recent.map(r => r.m[m.id]));
+    const nb = base.filter(r => r.m[m.id] != null).length, nr = recent.filter(r => r.m[m.id] != null).length;
+    if (b == null || c == null || (!m.zero && nb < 5) || nr < 5) return { cls: "na", text: "Learning", b, c, delta: null };
+    const delta = c - b, worse = delta * m.dir;     // > 0: moved the bad way
+    const cls = worse < m.watch ? "ok" : worse < m.bad ? "watch" : "bad";
+    return { cls, text: cls === "ok" ? "Steady" : cls === "watch" ? "Watch" : "Worse", b, c, delta };
+  }
+  const fmtv = (x, dec) => { if (x == null) return "--"; const t = Math.abs(x) < 0.5 * 10 ** -dec ? 0 : x; return (t > 0 ? "+" : "") + t.toFixed(dec); };
+  const un = (m) => m.unit === "°" ? "°" : " " + m.unit;
+  function chartSvg(m, recs, baseSet) {
+    const W = 340, H = 120, L = 34, R = 6, T = 8, B = 20;
+    const pts = recs.map((r, i) => ({ i, y: r.m[m.id], r })).filter(p => p.y != null);
+    if (pts.length < 2) return `<p class="note">Not enough pulls with this reading yet.</p>`;
+    let lo = Math.min(...pts.map(p => p.y)), hi = Math.max(...pts.map(p => p.y));
+    if (m.zero) { lo = Math.min(lo, -m.bad); hi = Math.max(hi, m.bad / 2); }
+    if (hi - lo < 1e-6) { lo -= 1; hi += 1; }
+    const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
+    const n = recs.length, X = (i) => L + (n <= 1 ? 0 : (i / (n - 1)) * (W - L - R)), Y = (y) => T + (1 - (y - lo) / (hi - lo)) * (H - T - B);
+    let g = "";
+    // baseline pulls: a quiet band behind them
+    const bi = recs.map((r, i) => baseSet.has(r) ? i : -1).filter(i => i >= 0);
+    if (bi.length) g += `<rect x="${X(bi[0]) - 3}" y="${T}" width="${Math.max(6, X(bi[bi.length - 1]) - X(bi[0]) + 6)}" height="${H - T - B}" fill="var(--dial-2)"/>`;
+    // y labels (three) and a recessive grid
+    for (const y of [lo + pad, (lo + hi) / 2, hi - pad]) {
+      g += `<line x1="${L}" x2="${W - R}" y1="${Y(y)}" y2="${Y(y)}" stroke="var(--line)" stroke-width="1"/>`;
+      g += `<text x="${L - 5}" y="${Y(y) + 3.5}" text-anchor="end" font-size="10" fill="var(--muted)">${y.toFixed(m.dec === 2 ? 1 : m.dec)}</text>`;
+    }
+    // the baseline level (dashed)
+    const bl = m.zero ? 0 : median(recs.filter(r => baseSet.has(r)).map(r => r.m[m.id]));
+    if (bl != null) g += `<line x1="${L}" x2="${W - R}" y1="${Y(bl)}" y2="${Y(bl)}" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+    // x labels: miles at the ends, if known
+    const m0 = mi(recs[0].odo), m1 = mi(recs[n - 1].odo);
+    g += `<text x="${L}" y="${H - 5}" font-size="10" fill="var(--muted)">${m0 ? m0.toLocaleString() + " mi" : "pull 1"}</text>`;
+    g += `<text x="${W - R}" y="${H - 5}" text-anchor="end" font-size="10" fill="var(--muted)">${m1 ? m1.toLocaleString() + " mi" : "pull " + n}</text>`;
+    // the pulls, then a rolling median of 5 over them
+    for (const p of pts) g += `<circle cx="${X(p.i).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="3" fill="var(--chrome)" fill-opacity=".55"/>`;
+    const roll = pts.map((p, k) => [p.i, median(pts.slice(Math.max(0, k - 2), k + 3).map(q => q.y))]);
+    g += `<polyline points="${roll.map(([i, y]) => X(i).toFixed(1) + "," + Y(y).toFixed(1)).join(" ")}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>`;
+    g += `<line class="xh" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--chrome)" stroke-width="1" visibility="hidden"/>`;
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(m.name)} for each pull" data-n="${n}" data-l="${L}" data-r="${R}" data-w="${W}">${g}</svg>`;
+  }
+  function renderHealth() {
+    const d = hData;
+    if (!d || !d.recs.length) {
+      $("h-head").textContent = "No pulls saved yet. Each pull you make (full throttle, a couple of seconds) is added here once the car is calm again.";
+      $("h-sum").innerHTML = ""; $("h-charts").innerHTML = ""; $("h-ctx").textContent = ""; return;
+    }
+    const { base, recent, fromBase } = healthMetrics(d);
+    const baseSet = new Set(base);
+    const vs = HM.map(m => ({ m, v: hVerdict(m, base, recent) }));
+    const odo = d.recs.filter(r => r.odo), span = odo.length >= 2 ? mi(odo[odo.length - 1].odo) - mi(odo[0].odo) : null;
+    const nWatch = vs.filter(x => x.v.cls === "watch").length, nBad = vs.filter(x => x.v.cls === "bad").length;
+    const slips = d.recs.slice(-20).filter(r => r.flags & 1).length;
+    const learning = fromBase.length < 15;
+    $("h-head").textContent = `${d.recs.length} pull${d.recs.length === 1 ? "" : "s"} saved` + (span ? ` over ${span.toLocaleString()} miles` : "") + ". " +
+      (learning ? `Comparisons start at 15 pulls from the baseline (${fromBase.length} so far).`
+        : nBad || nWatch || slips ? `${nBad ? nBad + " worse" : ""}${nBad && nWatch ? ", " : ""}${nWatch ? nWatch + " to watch" : ""}${slips ? `${nBad || nWatch ? ", " : ""}${slips} belt slip${slips === 1 ? "" : "s"} in the last 20 pulls` : ""}.`
+        : "Everything is steady against the baseline.");
+    const slipRow = `<li><span class="m">Belt slip</span><span class="verdict ${slips >= 2 ? "bad" : slips ? "watch" : "ok"}">${slips >= 2 ? "Worse" : slips ? "Watch" : "Steady"}</span>` +
+      `<span class="d">${slips} of the last ${Math.min(20, d.recs.length)} pulls had boost fall while RPM kept rising.</span></li>`;
+    $("h-sum").innerHTML = vs.map(({ m, v }) => `<li><span class="m">${m.name}</span><span class="verdict ${v.cls}">${v.text}</span>` +
+      `<span class="d">${v.delta == null ? "Needs 5 pulls with this reading in the baseline and in the last 10." :
+        `${m.zero ? "Last 10" : `Baseline ${v.b.toFixed(m.dec)}${un(m)}, last 10`} ${m.zero ? fmtv(v.c, m.dec) : v.c.toFixed(m.dec)}${un(m)}` + (m.zero ? "" : ` (${fmtv(v.delta, m.dec)})`)}</span></li>`).join("") + slipRow;
+    const ab = median(base.map(r => r.amb)), ar = median(recent.map(r => r.amb));
+    $("h-ctx").textContent = (ab != null && ar != null && Math.abs(ab - ar) >= 15
+      ? `Outside air was ${Math.round(ab)}°F for the baseline pulls and ${Math.round(ar)}°F for the last 10: heat-related readings (intake rise, knock, boost) shift with that. ` : "") +
+      (base.length && base[0].when ? `Baseline from ${new Date(base[0].when * 1000).toLocaleDateString()}${mi(base[0].odo) ? " at " + mi(base[0].odo).toLocaleString() + " mi" : ""}.` : "");
+    $("h-charts").innerHTML = vs.map(({ m, v }) => `<div class="dial hchart" data-m="${m.id}"><h3>${m.name}<span>${m.unit}</span></h3>` +
+      chartSvg(m, d.recs, baseSet) + `<div class="ro">${esc(m.why)}</div></div>`).join("");
+    // readout: the nearest pull to the pointer
+    document.querySelectorAll(".hchart").forEach(c => {
+      const sv = c.querySelector("svg"); if (!sv) return;
+      const m = HM.find(x => x.id === c.dataset.m), ro = c.querySelector(".ro"), xh = sv.querySelector(".xh");
+      if (!m) return;
+      const n = +sv.dataset.n, L = +sv.dataset.l, R = +sv.dataset.r, W = +sv.dataset.w;
+      const show = (ev) => {
+        const b = sv.getBoundingClientRect(), x = (ev.clientX - b.left) / b.width * W;
+        let i = Math.round((x - L) / (W - L - R) * (n - 1)); i = Math.max(0, Math.min(n - 1, i));
+        // nearest pull that has this reading
+        let k = -1; for (let dd = 0; dd < n && k < 0; dd++) for (const j of [i - dd, i + dd]) if (j >= 0 && j < n && d.recs[j].m[m.id] != null) { k = j; break; }
+        if (k < 0) return;
+        const r = d.recs[k], X = L + (n <= 1 ? 0 : k / (n - 1) * (W - L - R));
+        xh.setAttribute("x1", X); xh.setAttribute("x2", X); xh.setAttribute("visibility", "visible");
+        ro.innerHTML = `<b>${m.signed ? fmtv(r.m[m.id], m.dec) : r.m[m.id].toFixed(m.dec)}${un(m)}</b> · ` +
+          [r.when ? new Date(r.when * 1000).toLocaleDateString() : null, mi(r.odo) ? mi(r.odo).toLocaleString() + " mi" : null,
+           r.peak != null ? `peak ${r.peak.toFixed(1)} psi at ${r.peakRpm} rpm` : null, r.gear0 ? `from ${r.gear0}${["", "st", "nd", "rd"][r.gear0] || "th"}` : null,
+           r.amb != null ? `${Math.round(r.amb)}°F out` : null, baseSet.has(r) ? "baseline" : null].filter(Boolean).join(" · ");
+      };
+      sv.addEventListener("pointermove", show); sv.addEventListener("pointerdown", show);
+      sv.addEventListener("pointerleave", () => { xh.setAttribute("visibility", "hidden"); ro.textContent = m.why; });
+    });
+  }
+  // /cats.bin: 16-byte header ("CAT1"), then 24-byte records (firmware health.h CatRec)
+  function parseCats(buf) {
+    const v = new DataView(buf); if (buf.byteLength < 16 || v.getUint32(0, true) !== 0x31544143) return [];
+    const size = v.getUint16(4, true), out = [];
+    for (let o = 16; o + size <= buf.byteLength; o += size) {
+      const fl = v.getUint8(o + 22), b = [0, 1].map(k => (fl >> k & 1) ? { val: v.getUint16(o + 8 + 2 * k, true), min: v.getUint16(o + 12 + 2 * k, true), max: v.getUint16(o + 16 + 2 * k, true), tid: v.getUint8(o + 20 + k) } : null);
+      out.push({ when: v.getUint32(o, true), odo: v.getUint32(o + 4, true), flags: fl, b,
+        m: { cat1: b[0] ? testView(b[0]).pct ?? null : null, cat2: b[1] ? testView(b[1]).pct ?? null : null } });
+    }
+    return out;
+  }
+  function renderCats(cats) {
+    if (!cats.length) { $("c-sum").innerHTML = `<li><span class="m">No result saved yet</span><span class="verdict na">Waiting</span><span class="d">Saved once the ECU has a catalyst result and the pod's clock is set.</span></li>`; $("c-charts").innerHTML = ""; return; }
+    const last = cats[cats.length - 1];
+    const same = last.b[0] && last.b[1] && last.b[0].val === last.b[1].val;
+    $("c-sum").innerHTML = [0, 1].map(k => { const t = last.b[k]; if (!t) return "";
+      const v = testView(t);
+      return `<li><span class="m">Bank ${k + 1}</span><span class="verdict ${v.pass == null ? "na" : v.pass ? (v.pct != null && v.pct > 70 ? "watch" : "ok") : "bad"}">${v.pass == null ? "Not run" : !v.pass ? "Fail" : v.pct != null && v.pct > 70 ? "Watch" : "Pass"}</span>` +
+        `<span class="d">${v.text} · ${new Date(last.when * 1000).toLocaleDateString()}${last.odo ? " · " + mi(last.odo).toLocaleString() + " mi" : ""}</span></li>`; }).join("") +
+      (last.flags & 4 ? `<li><span class="m">Catalyst test</span><span class="verdict ${last.flags & 8 ? "ok" : "na"}">${last.flags & 8 ? "Run" : "Not run"}</span><span class="d">${last.flags & 8 ? "Done since the codes were cleared" : "Not run since the codes were cleared: the numbers may be placeholders"}${last.flags & 16 ? ", and on that drive" : ""}.</span></li>` : "") +
+      (same ? `<li><span class="m">Both banks read the same</span><span class="verdict na">Check</span><span class="d">Often a sign the test hasn't run yet; a real result usually differs a little between banks.</span></li>` : "");
+    const CM = [{ id: "cat1", name: "Catalyst, bank 1", unit: "%", dec: 1 }, { id: "cat2", name: "Catalyst, bank 2", unit: "%", dec: 1 }];
+    $("c-charts").innerHTML = cats.length >= 2 ? CM.map(m => `<div class="dial hchart"><h3>${m.name}<span>% of the limit</span></h3>${chartSvg(m, cats, new Set())}</div>`).join("") : "";
+  }
+  async function loadHealth() {
+    try { const rc = await fetch("/cats.bin", { cache: "no-store" }); renderCats(rc.ok ? parseCats(await rc.arrayBuffer()) : []); } catch (e) {}
+    try {
+      const r = await fetch("/health.bin", { cache: "no-store" });
+      hData = r.ok ? parseHealth(await r.arrayBuffer()) : { baseSeq: 0, recs: [] };
+      if (!hData) hData = { baseSeq: 0, recs: [] };
+    } catch (e) { return; }
+    renderHealth();
+  }
+  $("b-hbase").onclick = () => { if (confirm("Start a new baseline with your next 10 pulls? The history stays; only the comparison changes.")) post("/api/health", { do: "baseline" }).then(() => toast("New baseline starts with the next pull")); };
+  $("b-hclear").onclick = () => { if (confirm("Delete every saved pull? This can't be undone.")) post("/api/health", { do: "clear" }).then(() => toast("Health history cleared")); };
+  $("b-hcsv").onclick = () => {
+    if (!hData || !hData.recs.length) { toast("No pulls saved yet"); return; }
+    const cols = ["seq", "when", "odo", "peak", "peakRpm", "tgt", "vs", "knock", "kcyl", "minTim", "afrOver", "afrMax", "idc", "dur", "iat0", "iatMax", "amb", "oil", "clt", "hpfpDef", "hpfpMin", "lpfpMin", "catMax", "kmh0", "kmh1", "gear0", "flags"];
+    const rows = [["date", "miles", ...cols, ...[...Array(10)].map((_, i) => `psi_${2500 + i * 500}`)].join(",")];
+    for (const r of hData.recs) rows.push([r.when ? new Date(r.when * 1000).toISOString() : "", mi(r.odo) ?? "", ...cols.map(c => r[c] ?? ""), ...r.bins.map(b => b ?? "")].join(","));
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([rows.join("\n") + "\n"], { type: "text/csv" })); a.download = "health.csv"; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+
+  loadSettings().catch(() => {});
+  poll(); loadObd(); loadScan();
+})();
+</script>
+</body>
+</html>

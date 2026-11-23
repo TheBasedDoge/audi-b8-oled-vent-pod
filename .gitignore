@@ -1,0 +1,19 @@
+build/
+*.zip
+*.elf
+*.map
+__pycache__/
+*_test
+watch_replay
+# Your own car's fonts and badge (see tools/gen_fonts.py / gen_badge.py): never published
+firmware/S5GaugePod_Test/private/
+# Third-party documents and assets kept for reference only (not ours to redistribute)
+reference/
+# Local snapshots, builds and drive data
+firmware/backup_*/
+firmware/release/
+*.bin
+*.csv
+# Early mock-ups drawn with the car's own badge (kept locally)
+docs/boost-target-mockup.png
+docs/gauge-layout-mockup.png
